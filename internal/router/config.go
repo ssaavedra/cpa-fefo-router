@@ -66,7 +66,7 @@ type WaitConfig struct {
 	MaxWait time.Duration `yaml:"max_wait" json:"max_wait"`
 }
 
-// Config is the plugins.configs.burndown-router section.
+// Config is the plugins.configs.fefo-router section.
 type Config struct {
 	Mode Mode `yaml:"mode" json:"mode"`
 	// SpareFactor k: an account lends quota while
@@ -134,22 +134,22 @@ func DefaultConfig() Config {
 
 // rawConfig mirrors Config with durations as strings so "30m" parses.
 type rawConfig struct {
-	Mode            *string                  `yaml:"mode"`
-	SpareFactor     *float64                 `yaml:"spare_factor"`
-	MinSpare        *float64                 `yaml:"min_spare"`
-	MinRemaining    *float64                 `yaml:"min_remaining"`
-	MinHistory      *string                  `yaml:"min_history"`
-	StaleAfter      *string                  `yaml:"stale_after"`
-	ProbeInterval   *string                  `yaml:"probe_interval"`
-	SessionTTL      *string                  `yaml:"session_ttl"`
-	AllowExtraUsage *bool                    `yaml:"allow_extra_usage"`
-	RefreshInterval *string                  `yaml:"refresh_interval"`
-	StateFile       *string                  `yaml:"state_file"`
-	LogDecisions    *bool                    `yaml:"log_decisions"`
-	Buckets         map[string][]string      `yaml:"buckets"`
-	Capacity        map[string]float64       `yaml:"capacity"`
-	Clients         map[string]ClientConfig  `yaml:"clients"`
-	DefaultClient   *ClientConfig            `yaml:"default_client"`
+	Mode            *string                 `yaml:"mode"`
+	SpareFactor     *float64                `yaml:"spare_factor"`
+	MinSpare        *float64                `yaml:"min_spare"`
+	MinRemaining    *float64                `yaml:"min_remaining"`
+	MinHistory      *string                 `yaml:"min_history"`
+	StaleAfter      *string                 `yaml:"stale_after"`
+	ProbeInterval   *string                 `yaml:"probe_interval"`
+	SessionTTL      *string                 `yaml:"session_ttl"`
+	AllowExtraUsage *bool                   `yaml:"allow_extra_usage"`
+	RefreshInterval *string                 `yaml:"refresh_interval"`
+	StateFile       *string                 `yaml:"state_file"`
+	LogDecisions    *bool                   `yaml:"log_decisions"`
+	Buckets         map[string][]string     `yaml:"buckets"`
+	Capacity        map[string]float64      `yaml:"capacity"`
+	Clients         map[string]ClientConfig `yaml:"clients"`
+	DefaultClient   *ClientConfig           `yaml:"default_client"`
 	Pacing          *struct {
 		Enabled  *bool   `yaml:"enabled"`
 		Horizon  *string `yaml:"horizon"`

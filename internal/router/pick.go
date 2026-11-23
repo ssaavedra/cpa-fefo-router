@@ -27,6 +27,7 @@ type Decision struct {
 	Session  string    `json:"session"` // "pinned", "new" or "none"
 	Outcome  string    `json:"outcome"` // selected, rejected, unhandled
 	Account  string    `json:"account,omitempty"`
+	Buckets  []string  `json:"buckets,omitempty"`
 	Role     string    `json:"role,omitempty"`
 	Reason   string    `json:"reason"`
 	Policy   string    `json:"policy,omitempty"`
@@ -138,6 +139,7 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 	}
 	choose := func(id, role, why string) (pluginapi.SchedulerPickResponse, Decision) {
 		d.Outcome, d.Account, d.Role, d.Reason = "selected", pc.evals[id].Name, role, why
+		d.Buckets = pc.evals[id].Buckets
 		if bindKey != "" {
 			r.bindings[bindKey] = binding{AuthID: id, Expires: now.Add(r.cfg.SessionTTL)}
 		}
@@ -176,11 +178,11 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 	case PolicyFail:
 		d.Outcome, d.Reason = "rejected", "no own or spare account usable; policy fail"
 		return pluginapi.SchedulerPickResponse{Handled: true, Reject: true, RejectCode: RejectExhausted,
-			RejectReason: "burndown-router: client " + client + " has no usable account (policy fail)"}, d
+			RejectReason: "fefo-router: client " + client + " has no usable account (policy fail)"}, d
 	case PolicyWait:
 		d.Outcome, d.Reason = "rejected", "no own or spare account usable; policy wait"
 		return pluginapi.SchedulerPickResponse{Handled: true, Reject: true, RejectCode: RejectWait,
-			RejectReason: "burndown-router: client " + client + " is waiting for quota to refill"}, d
+			RejectReason: "fefo-router: client " + client + " is waiting for quota to refill"}, d
 	}
 	// Policy any with nothing usable in our view: CPA may know better (no
 	// data for these accounts). Let it fill-first among what it offered.
@@ -196,7 +198,7 @@ func (r *Router) logDecision(d Decision) {
 	if len(d.Ranking) > 1 {
 		next = d.Ranking[1]
 	}
-	msg := fmt.Sprintf("burndown %s client=%s %s → %s [%s] %s", d.Outcome, d.Client, d.Provider, d.Account, d.Role, d.Reason)
+	msg := fmt.Sprintf("fefo %s client=%s %s → %s [%s] %s", d.Outcome, d.Client, d.Provider, d.Account, d.Role, d.Reason)
 	r.log("info", msg, map[string]any{
 		"client": d.Client, "provider": d.Provider, "model": d.Model, "session": d.Session,
 		"outcome": d.Outcome, "account": d.Account, "role": d.Role, "reason": d.Reason,

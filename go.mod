@@ -1,4 +1,4 @@
-module github.com/ssaavedra/cpa-burndown-router
+module github.com/ssaavedra/cpa-fefo-router
 
 go 1.26.10
 

@@ -93,36 +93,36 @@ func (r *Router) Prometheus() string {
 		}
 	}
 
-	gauge("burndown_account_weekly_remaining_ratio", "Unused share of the weekly window.")
+	gauge("fefo_account_weekly_remaining_ratio", "Unused share of the weekly window.")
 	for _, x := range rows {
-		fmt.Fprintf(&b, "burndown_account_weekly_remaining_ratio%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.WeeklyRemaining))
+		fmt.Fprintf(&b, "fefo_account_weekly_remaining_ratio%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.WeeklyRemaining))
 	}
-	gauge("burndown_account_short_remaining_ratio", "Unused share of the shortest (5h) window.")
+	gauge("fefo_account_short_remaining_ratio", "Unused share of the shortest (5h) window.")
 	for _, x := range rows {
-		fmt.Fprintf(&b, "burndown_account_short_remaining_ratio%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.ShortRemaining))
+		fmt.Fprintf(&b, "fefo_account_short_remaining_ratio%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.ShortRemaining))
 	}
-	gauge("burndown_account_weekly_reset_seconds", "Seconds until the weekly window refills.")
+	gauge("fefo_account_weekly_reset_seconds", "Seconds until the weekly window refills.")
 	for _, x := range rows {
 		if !x.e.WeeklyReset.IsZero() {
-			fmt.Fprintf(&b, "burndown_account_weekly_reset_seconds%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.WeeklyReset.Sub(now).Seconds()))
+			fmt.Fprintf(&b, "fefo_account_weekly_reset_seconds%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.WeeklyReset.Sub(now).Seconds()))
 		}
 	}
-	gauge("burndown_account_expected_home_usage", "Expected use by home clients until the weekly reset, in plan-weeks.")
-	gauge("burndown_account_spare", "Lendable quota in plan-weeks (remaining − spare_factor × expected).")
+	gauge("fefo_account_expected_home_usage", "Expected use by home clients until the weekly reset, in plan-weeks.")
+	gauge("fefo_account_spare", "Lendable quota in plan-weeks (remaining − spare_factor × expected).")
 	for _, x := range rows {
 		l := lbl("account", x.e.Name, "provider", x.e.Provider)
-		fmt.Fprintf(&b, "burndown_account_expected_home_usage%s %s\n", l, num(x.e.Expected))
-		fmt.Fprintf(&b, "burndown_account_spare%s %s\n", l, num(x.e.Spare))
+		fmt.Fprintf(&b, "fefo_account_expected_home_usage%s %s\n", l, num(x.e.Expected))
+		fmt.Fprintf(&b, "fefo_account_spare%s %s\n", l, num(x.e.Spare))
 	}
-	gauge("burndown_account_usable", "1 when the account can take traffic.")
+	gauge("fefo_account_usable", "1 when the account can take traffic.")
 	for _, x := range rows {
 		v := 0.0
 		if x.e.Usable {
 			v = 1
 		}
-		fmt.Fprintf(&b, "burndown_account_usable%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "reason", x.e.Block), num(v))
+		fmt.Fprintf(&b, "fefo_account_usable%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "reason", x.e.Block), num(v))
 	}
-	gauge("burndown_client_demand_per_hour", "Client consumption in plan-weeks per hour.")
+	gauge("fefo_client_demand_per_hour", "Client consumption in plan-weeks per hour.")
 	for _, p := range sortedKeys(providers) {
 		pc := r.newPlanContextLocked(p, now)
 		clients := append(sortedKeys(r.cfg.Clients), externalClient)
@@ -131,33 +131,33 @@ func (r *Router) Prometheus() string {
 			if !ri.Known {
 				continue
 			}
-			fmt.Fprintf(&b, "burndown_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "24h"), num(ri.Day))
-			fmt.Fprintf(&b, "burndown_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "7d"), num(ri.Week))
+			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "24h"), num(ri.Day))
+			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "7d"), num(ri.Week))
 		}
 	}
-	counter("burndown_picks_total", "Routing decisions.")
+	counter("fefo_picks_total", "Routing decisions.")
 	for _, k := range sortedTupleKeys(r.metrics.picks) {
-		fmt.Fprintf(&b, "burndown_picks_total%s %s\n", lbl("client", k[0], "account", k[1], "role", k[2], "outcome", k[3]), num(r.metrics.picks[k]))
+		fmt.Fprintf(&b, "fefo_picks_total%s %s\n", lbl("client", k[0], "account", k[1], "role", k[2], "outcome", k[3]), num(r.metrics.picks[k]))
 	}
-	counter("burndown_tokens_total", "Tokens served.")
+	counter("fefo_tokens_total", "Tokens served.")
 	for _, k := range sortedTupleKeys(r.metrics.tokens) {
-		fmt.Fprintf(&b, "burndown_tokens_total%s %s\n", lbl("client", k[0], "account", k[1]), num(r.metrics.tokens[k]))
+		fmt.Fprintf(&b, "fefo_tokens_total%s %s\n", lbl("client", k[0], "account", k[1]), num(r.metrics.tokens[k]))
 	}
-	counter("burndown_requests_total", "Requests served.")
+	counter("fefo_requests_total", "Requests served.")
 	for _, k := range sortedTupleKeys(r.metrics.requests) {
-		fmt.Fprintf(&b, "burndown_requests_total%s %s\n", lbl("client", k[0], "account", k[1], "failed", k[2]), num(r.metrics.requests[k]))
+		fmt.Fprintf(&b, "fefo_requests_total%s %s\n", lbl("client", k[0], "account", k[1], "failed", k[2]), num(r.metrics.requests[k]))
 	}
-	counter("burndown_paced_seconds_total", "Delay added by pacing and waiting.")
+	counter("fefo_paced_seconds_total", "Delay added by pacing and waiting.")
 	for _, c := range sortedKeys(r.metrics.pacedSeconds) {
-		fmt.Fprintf(&b, "burndown_paced_seconds_total%s %s\n", lbl("client", c), num(r.metrics.pacedSeconds[c]))
+		fmt.Fprintf(&b, "fefo_paced_seconds_total%s %s\n", lbl("client", c), num(r.metrics.pacedSeconds[c]))
 	}
-	counter("burndown_paced_requests_total", "Requests delayed.")
+	counter("fefo_paced_requests_total", "Requests delayed.")
 	for _, c := range sortedKeys(r.metrics.pacedCount) {
-		fmt.Fprintf(&b, "burndown_paced_requests_total%s %s\n", lbl("client", c), num(r.metrics.pacedCount[c]))
+		fmt.Fprintf(&b, "fefo_paced_requests_total%s %s\n", lbl("client", c), num(r.metrics.pacedCount[c]))
 	}
-	counter("burndown_wait_rejections_total", "Requests answered 429 under the wait policy.")
+	counter("fefo_wait_rejections_total", "Requests answered 429 under the wait policy.")
 	for _, c := range sortedKeys(r.metrics.waitRejects) {
-		fmt.Fprintf(&b, "burndown_wait_rejections_total%s %s\n", lbl("client", c), num(r.metrics.waitRejects[c]))
+		fmt.Fprintf(&b, "fefo_wait_rejections_total%s %s\n", lbl("client", c), num(r.metrics.waitRejects[c]))
 	}
 	return b.String()
 }

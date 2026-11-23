@@ -14,13 +14,16 @@ const stateVersion = 1
 // persisted is the on-disk state. It never contains API keys or tokens:
 // clients are aliases or caller-scope hashes, accounts are auth IDs/labels.
 type persisted struct {
-	Version      int                                   `json:"version"`
-	SavedAt      time.Time                             `json:"saved_at"`
-	ObserveStart time.Time                             `json:"observe_start"`
-	Accounts     map[string]*accountState              `json:"accounts"`
-	Hours        map[string]map[int64]*hourBucket      `json:"hours"`
-	Scopes       map[string]string                     `json:"scopes"`
-	Overrides    map[string]Override                   `json:"overrides"`
+	Version      int                              `json:"version"`
+	SavedAt      time.Time                        `json:"saved_at"`
+	ObserveStart time.Time                        `json:"observe_start"`
+	Accounts     map[string]*accountState         `json:"accounts"`
+	Hours        map[string]map[int64]*hourBucket `json:"hours"`
+	Scopes       map[string]string                `json:"scopes"`
+	Overrides    map[string]Override              `json:"overrides"`
+	Overlay      string                           `json:"runtime_config,omitempty"`
+	OverlayAt    time.Time                        `json:"runtime_config_at,omitzero"`
+	OverlayNote  string                           `json:"runtime_config_note,omitempty"`
 }
 
 func (r *Router) loadState(path string) {
@@ -86,6 +89,9 @@ func (r *Router) loadState(path string) {
 			r.overrides[k] = v
 		}
 	}
+	if r.overlay == "" && p.Overlay != "" {
+		r.overlay, r.overlayAt, r.overlayNote = p.Overlay, p.OverlayAt, p.OverlayNote
+	}
 	r.stateErr = ""
 }
 
@@ -99,6 +105,7 @@ func (r *Router) saveState() {
 	p := persisted{
 		Version: stateVersion, SavedAt: r.now(), ObserveStart: r.observeStart,
 		Accounts: r.accounts, Hours: r.hours, Scopes: r.scopes, Overrides: r.overrides,
+		Overlay: r.overlay, OverlayAt: r.overlayAt, OverlayNote: r.overlayNote,
 	}
 	raw, err := json.Marshal(p)
 	r.dirty = false
@@ -120,7 +127,7 @@ func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".burndown-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".fefo-*.tmp")
 	if err != nil {
 		return err
 	}

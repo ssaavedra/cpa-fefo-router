@@ -1,8 +1,11 @@
 package router
 
 import (
+	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -320,7 +323,118 @@ func TestStatusAndMetricsRender(t *testing.T) {
 		}
 	}
 	m := h.r.Prometheus()
-	if !strings.Contains(m, `burndown_picks_total{client="pni",account="d@example.com",role="own",outcome="selected"} 1`) {
+	if !strings.Contains(m, `fefo_picks_total{client="pni",account="d@example.com",role="own",outcome="selected"} 1`) {
 		t.Fatal(m)
+	}
+}
+
+func TestRuntimeConfigOverlay(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	h := newHarness(t, "state_file: "+path)
+	h.seed(0.2, 0.2, 0.2, h.now.Add(72*time.Hour), h.now.Add(96*time.Hour), h.now.Add(48*time.Hour))
+	h.expectPick("connect", "s1", acctP)
+
+	// Move connect to bucket d from the browser.
+	doc := h.r.Config().Doc()
+	c := doc.Clients["connect"]
+	c.Buckets = []string{"d"}
+	doc.Clients["connect"] = c
+	body, _ := json.Marshal(map[string]any{"config": doc, "note": "test"})
+	v, err := h.r.UpdateConfig(body)
+	if err != nil || v.Source != "runtime" {
+		t.Fatalf("update: %v %+v", err, v)
+	}
+	h.expectPick("connect", "s2", acctD)
+
+	// Invalid edits are refused and change nothing.
+	if _, err := h.r.UpdateConfig([]byte(`{"yaml":"clients: {x: {buckets: [nope]}}"}`)); err == nil {
+		t.Fatal("invalid config accepted")
+	}
+	// Survives a restart, and config.yaml edits do not clobber it.
+	h.r.saveState()
+	h2 := newHarness(t, "state_file: "+path)
+	h2.seed(0.2, 0.2, 0.2, h2.now.Add(72*time.Hour), h2.now.Add(96*time.Hour), h2.now.Add(48*time.Hour))
+	h2.expectPick("connect", "s3", acctD)
+	// Revert.
+	if _, err := h2.r.UpdateConfig([]byte(`{"revert":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	h2.expectPick("connect", "s4", acctP)
+}
+
+func TestAssignUnknownKey(t *testing.T) {
+	h := newHarness(t, "")
+	h.seed(0.2, 0.2, 0.2, h.now.Add(72*time.Hour), h.now.Add(96*time.Hour), h.now.Add(48*time.Hour))
+	h.pick("bot", "s1")
+	st := h.r.Status(0)
+	if len(st.UnknownKeys) != 1 || st.UnknownKeys[0].Scope != callerScope(keys["bot"]) {
+		t.Fatalf("unknown keys: %+v", st.UnknownKeys)
+	}
+	body, _ := json.Marshal(map[string]any{"assign_key": map[string]string{"scope": st.UnknownKeys[0].Scope, "client": "bot"}})
+	if _, err := h.r.UpdateConfig(body); err != nil {
+		t.Fatal(err)
+	}
+	_, d := h.pick("bot", "s2")
+	if d.Client != "bot" {
+		t.Fatalf("client %s", d.Client)
+	}
+	if st := h.r.Status(0); len(st.UnknownKeys) != 0 {
+		t.Fatalf("still unknown: %+v", st.UnknownKeys)
+	}
+}
+
+func TestManagementRoutes(t *testing.T) {
+	h := newHarness(t, "")
+	hd := &Handler{Router: h.r}
+	page := hd.management(pluginapi.ManagementRequest{Method: "GET", Path: "/v0/resource/plugins/fefo-router/ui"})
+	if page.StatusCode != 200 || !strings.Contains(string(page.Body), "FEFO Router") {
+		t.Fatalf("ui: %d", page.StatusCode)
+	}
+	cfg := hd.management(pluginapi.ManagementRequest{Method: "GET", Path: "/v0/management/fefo/config"})
+	if cfg.StatusCode != 200 || !strings.Contains(string(cfg.Body), `"spare_factor":1.5`) {
+		t.Fatalf("config: %d %s", cfg.StatusCode, cfg.Body)
+	}
+	bad := hd.management(pluginapi.ManagementRequest{Method: "POST", Path: "/v0/management/fefo/override", Body: []byte(`{"client":"nobody","policy":"any"}`)})
+	if bad.StatusCode != 400 {
+		t.Fatalf("override unknown client: %d", bad.StatusCode)
+	}
+}
+
+func TestDurationRoundTrip(t *testing.T) {
+	for d, want := range map[time.Duration]string{30 * time.Second: "30s", 6 * time.Hour: "6h", 90 * time.Minute: "90m", 0: "0s"} {
+		if got := durStr(d); got != want {
+			t.Fatalf("%s → %s, want %s", d, got, want)
+		}
+	}
+	cfg := DefaultConfig()
+	raw, _ := json.Marshal(cfg.Doc())
+	back, err := ParseConfig(raw)
+	if err != nil || back.MinHistory != cfg.MinHistory || back.Wait.MaxWait != cfg.Wait.MaxWait {
+		t.Fatalf("round trip: %v %+v", err, back)
+	}
+}
+
+func TestExampleConfigParses(t *testing.T) {
+	raw, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Plugins struct {
+			Configs map[string]yaml.Node `yaml:"configs"`
+		} `yaml:"plugins"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	node := doc.Plugins.Configs[PluginName]
+	section, _ := yaml.Marshal(&node)
+	cfg, err := ParseConfig(section)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SpareFactor != 1.5 || len(cfg.Clients) != 2 || cfg.Clients["ci"].OnExhausted != PolicyWait {
+		t.Fatalf("%+v", cfg)
 	}
 }

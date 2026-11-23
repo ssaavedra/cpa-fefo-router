@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FEFO Router</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fff; --fg: #1d2330; --muted: #5d6677; --line: #e2e5eb;
+  --accent: #2f6fe4; --ok: #1f8f5a; --warn: #b7791f; --bad: #c53b3b; --chip: #eef1f6;
+  --bar: #dfe4ec; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #1a1f27; --fg: #e5e9f0; --muted: #98a2b3; --line: #2a313c;
+  --accent: #6b9cff; --ok: #4cc38a; --warn: #e3b34b; --bad: #ff7070; --chip: #232a35; --bar: #2a313c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 16px; margin: 0 8px 0 0; }
+nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+nav button.on { background: var(--chip); color: var(--fg); font-weight: 600; }
+.spacer { flex: 1; }
+.meta { color: var(--muted); font-size: 12px; }
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+section { display: none; } section.on { display: block; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.card h3 { margin: 0 0 6px; font-size: 14px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+h2 { font-size: 15px; margin: 20px 0 8px; }
+.chip { display: inline-block; background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 12px; color: var(--muted); }
+.chip.own { color: var(--accent); } .chip.spare-first, .chip.spare { color: var(--ok); } .chip.last-resort { color: var(--warn); } .chip.probe { color: var(--muted); }
+.chip.bad { color: var(--bad); } .chip.ok { color: var(--ok); }
+.bar { height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; margin: 2px 0 6px; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.bar.low > i { background: var(--bad); } .bar.mid > i { background: var(--warn); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; }
+.why { color: var(--muted); font-size: 12px; margin-top: 6px; word-break: break-word; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13px; }
+th { color: var(--muted); font-weight: 600; background: var(--chip); }
+tr:last-child td { border-bottom: 0; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+ol.plan { margin: 4px 0 0; padding-left: 20px; } ol.plan li { margin: 2px 0; }
+.warn { background: color-mix(in srgb, var(--warn) 15%, var(--panel)); border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.err { color: var(--bad); }
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+input, select, textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+textarea { width: 100%; font-family: var(--mono); font-size: 12px; min-height: 80px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 10px; }
+.row > div { min-width: 120px; }
+button.act { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
+button.sec { background: var(--chip); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+button.danger { color: var(--bad); }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.toast { position: fixed; bottom: 16px; right: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,.15); display: none; }
+#login { max-width: 420px; margin: 60px auto; }
+.flowcell { white-space: nowrap; }
+@media (max-width: 640px) { main { padding: 10px; } .row > div { min-width: 100%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>FEFO Router</h1>
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="traffic">Traffic</button>
+    <button data-tab="overrides">Overrides</button>
+    <button data-tab="config">Config</button>
+  </nav>
+  <span class="spacer"></span>
+  <span class="meta" id="meta"></span>
+  <label class="meta" style="display:flex;gap:4px;align-items:center;margin:0"><input type="checkbox" id="auto" checked> auto-refresh</label>
+</header>
+<main>
+  <div id="login" class="card" hidden>
+    <h3>Management key required</h3>
+    <p class="meta">Sign in to the CPA management panel with “remember” on, or enter the key here. It is kept only in this tab.</p>
+    <div class="row"><div style="flex:1"><input id="keyInput" type="password" style="width:100%" autocomplete="current-password"></div><button class="act" id="keyBtn">Open</button></div>
+    <div class="err" id="loginErr"></div>
+  </div>
+  <div id="warnings"></div>
+
+  <section id="overview" class="on">
+    <h2>Accounts</h2>
+    <div class="grid" id="accounts"></div>
+    <h2>Clients and their current plan</h2>
+    <div class="grid" id="clients"></div>
+  </section>
+
+  <section id="traffic">
+    <h2>Traffic since plugin load (client → account)</h2>
+    <div class="scroll"><table id="flows"></table></div>
+    <h2>Recent decisions</h2>
+    <div class="filters">
+      <input id="fClient" placeholder="client">
+      <input id="fAccount" placeholder="account">
+      <select id="fOutcome"><option value="">any outcome</option><option>selected</option><option>rejected</option><option>delegated</option><option>unhandled</option></select>
+      <select id="fRole"><option value="">any role</option><option>own</option><option>spare-first</option><option>spare</option><option>last-resort</option><option>probe</option></select>
+    </div>
+    <div class="scroll"><table id="decisions"></table></div>
+  </section>
+
+  <section id="overrides">
+    <h2>Active overrides</h2>
+    <div id="ovList"></div>
+    <h2>New temporary override</h2>
+    <div class="card">
+      <div class="row">
+        <div><label>Client</label><select id="ovClient"></select></div>
+        <div><label>When exhausted</label><select id="ovPolicy"><option value="">(unchanged)</option><option value="any">any — use other accounts</option><option value="wait">wait — slow down, then 429</option><option value="fail">fail — reject</option></select></div>
+        <div><label>Spare factor (all clients)</label><input id="ovSpare" type="number" step="0.1" min="1" placeholder="(unchanged)"></div>
+        <div><label>For</label><select id="ovFor"><option>30m</option><option>1h</option><option selected>2h</option><option>4h</option><option>12h</option><option>24h</option><option value="">until cleared</option></select></div>
+        <div style="flex:1"><label>Note</label><input id="ovNote" style="width:100%" placeholder="why"></div>
+        <button class="act" id="ovApply">Apply</button>
+      </div>
+      <div class="meta">Example: “ci may use any account for the next 2h”. Overrides survive restarts and expire on their own.</div>
+    </div>
+  </section>
+
+  <section id="config">
+    <div class="card" style="margin-bottom:12px">
+      <div class="row" style="margin:0">
+        <div><strong>Source:</strong> <span id="cfgSource"></span></div>
+        <span class="spacer"></span>
+        <input id="cfgNote" placeholder="change note" style="min-width:220px">
+        <button class="act" id="cfgSave">Save runtime config</button>
+        <button class="sec danger" id="cfgRevert">Revert to config.yaml</button>
+      </div>
+      <div class="meta">Saving stores the routing config in the plugin state file; it applies immediately and wins over config.yaml until reverted. <code>mode</code> and <code>state_file</code> always come from config.yaml.</div>
+      <div class="err" id="cfgErr"></div>
+    </div>
+
+    <h2>Global</h2>
+    <div class="card"><div class="row" id="globals"></div></div>
+
+    <h2>Buckets <button class="sec" id="addBucket">+ bucket</button></h2>
+    <div class="meta" style="margin-bottom:6px">A bucket is a list of accounts (e-mail, auth file name or auth ID). Known accounts: <span id="knownAccounts"></span></div>
+    <div id="buckets"></div>
+
+    <h2>Clients <button class="sec" id="addClient">+ client</button></h2>
+    <div class="meta" style="margin-bottom:6px">Keys are caller scopes (<span class="mono">sha256("cli-proxy-api:caller-scope:v1\0"+key)</span>) or <span class="mono">sha256(key)</span>. Buckets are in preference order.</div>
+    <div id="clientsCfg"></div>
+
+    <h2>Unknown keys seen</h2>
+    <div id="unknownKeys"></div>
+
+    <h2>Advanced</h2>
+    <details><summary>Edit the runtime config as JSON</summary>
+      <textarea id="rawJson" style="min-height:280px"></textarea>
+      <div class="row" style="margin-top:6px"><button class="sec" id="rawApply">Save JSON as runtime config</button></div>
+    </details>
+    <details><summary>config.yaml section (read-only)</summary><pre class="mono" id="baseYaml"></pre></details>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+const API = "/v0/management/fefo";
+const KEY_STORE = "fefo-router:management-key";
+let key = "", status = null, cfgView = null, draft = null, dirty = false, timer = null;
+const $ = (id) => document.getElementById(id);
+
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) n.append(k.nodeType ? k : String(k));
+  return n;
+}
+function toast(msg, bad) { const t = $("toast"); t.textContent = msg; t.style.color = bad ? "var(--bad)" : ""; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500); }
+function pct(x) { return (x * 100).toFixed(0) + "%"; }
+function until(t) {
+  if (!t) return "?";
+  let s = (new Date(t) - Date.now()) / 1000;
+  if (s <= 0) return "now";
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+function when(t) { return t ? new Date(t).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "?"; }
+function bar(rem) { return el("div", { class: "bar " + (rem < 0.1 ? "low" : rem < 0.3 ? "mid" : "") }, el("i", { style: `width:${Math.max(0, Math.min(1, rem)) * 100}%` })); }
+
+// --- auth ---------------------------------------------------------------
+function dashboardKey() {
+  try {
+    const stored = localStorage.getItem("cli-proxy-auth") || "";
+    if (!stored.startsWith("enc::v2::")) return "";
+    const data = Uint8Array.from(atob(stored.slice(9)), (c) => c.charCodeAt(0));
+    const secret = new TextEncoder().encode("cli-proxy-api-webui::secure-storage|" + location.host);
+    const plain = new TextDecoder().decode(data.map((b, i) => b ^ secret[i % secret.length]));
+    const v = JSON.parse(plain).state?.managementKey;
+    return typeof v === "string" ? v : "";
+  } catch { return ""; }
+}
+function applyTheme() {
+  let theme = "auto";
+  try { theme = JSON.parse(localStorage.getItem("cli-proxy-theme") || "{}").state?.theme || "auto"; } catch {}
+  const dark = theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+}
+async function api(path, body) {
+  const opts = { headers: { Authorization: "Bearer " + key } };
+  if (body !== undefined) { opts.method = "POST"; opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(API + path, opts);
+  if (res.status === 401 || res.status === 403) { showLogin("Key rejected."); throw new Error("unauthorized"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+function showLogin(msg) { $("login").hidden = false; $("loginErr").textContent = msg || ""; }
+$("keyBtn").onclick = () => { key = $("keyInput").value.trim(); try { sessionStorage.setItem(KEY_STORE, key); } catch {} $("login").hidden = true; refresh(true); };
+
+// --- tabs ---------------------------------------------------------------
+for (const b of document.querySelectorAll("#tabs button")) {
+  b.onclick = () => {
+    for (const x of document.querySelectorAll("#tabs button")) x.classList.toggle("on", x === b);
+    for (const s of document.querySelectorAll("main section")) s.classList.toggle("on", s.id === b.dataset.tab);
+    try { sessionStorage.setItem("fefo-router:tab", b.dataset.tab); } catch {}
+  };
+}
+
+// --- overview -----------------------------------------------------------
+function renderOverview() {
+  const w = $("warnings"); w.replaceChildren();
+  for (const x of status.warnings || []) w.append(el("div", { class: "warn" }, "⚠ " + x));
+  if (status.host_error) w.append(el("div", { class: "warn" }, "Host sync error: " + status.host_error));
+  if (status.state_error) w.append(el("div", { class: "warn" }, "State file: " + status.state_error));
+
+  const a = $("accounts"); a.replaceChildren();
+  for (const x of status.accounts || []) {
+    const state = !x.usable ? el("span", { class: "chip bad" }, "blocked") : x.no_data ? el("span", { class: "chip" }, "no data yet") : el("span", { class: "chip ok" }, "usable");
+    a.append(el("div", { class: "card" },
+      el("h3", {}, x.account, el("span", { class: "chip" }, x.provider), ...(x.buckets || []).map((b) => el("span", { class: "chip own" }, "bucket " + b)), state),
+      el("div", { class: "meta" }, `weekly ${pct(x.weekly_remaining)} left · resets ${when(x.weekly_reset)} (in ${until(x.weekly_reset)})`), bar(x.weekly_remaining),
+      el("div", { class: "meta" }, `5h ${pct(x.short_remaining)} left · resets in ${until(x.short_reset)}`), bar(x.short_remaining),
+      el("dl", { class: "kv" },
+        el("dt", {}, "home clients"), el("dd", {}, (x.home_clients || []).join(", ") || "none (shared pool)"),
+        el("dt", {}, "expected use"), el("dd", {}, x.expected_home_usage == null ? "unknown yet" : x.expected_home_usage.toFixed(2) + " plan-weeks"),
+        el("dt", {}, "spare"), el("dd", {}, x.spare == null ? "unknown yet" : (x.spare > 0 ? "+" : "") + x.spare.toFixed(2)),
+        el("dt", {}, "data age"), el("dd", {}, x.data_age || "—")),
+      x.blocked ? el("div", { class: "why err" }, x.blocked) : null,
+      x.spare_why ? el("div", { class: "why" }, x.spare_why) : null));
+  }
+  const c = $("clients"); c.replaceChildren();
+  for (const x of status.clients || []) {
+    const body = [];
+    for (const p of Object.keys(x.plans || {}).sort()) {
+      const d = x.demand[p] || {};
+      body.push(el("div", { class: "meta" }, p + ": " + (d.Known ? `demand ${d.PerHour.toFixed(4)} plan-weeks/h (24h ${d.Day.toFixed(4)}, 7d ${d.Week.toFixed(4)})` : "demand unknown — " + (d.Why || ""))));
+      const ol = el("ol", { class: "plan" });
+      for (const e of x.plans[p]) ol.append(el("li", {}, el("span", { class: "chip " + e.role }, e.role), " ", el("strong", {}, e.account), el("div", { class: "why" }, e.why)));
+      if (!x.plans[p].length) ol.append(el("li", { class: "err" }, "no usable account"));
+      body.push(ol);
+    }
+    c.append(el("div", { class: "card" },
+      el("h3", {}, x.client, ...(x.buckets || []).map((b, i) => el("span", { class: "chip own" }, (i + 1) + ". " + b))),
+      el("div", { class: "meta" }, "when exhausted: " + x.policy + (x.borrow ? " · borrows spare" : " · never borrows")), ...body));
+  }
+}
+
+// --- traffic ------------------------------------------------------------
+function renderTraffic() {
+  const roles = ["own", "spare-first", "spare", "last-resort", "probe"];
+  const t = $("flows"); t.replaceChildren(el("tr", {}, el("th", {}, "client"), el("th", {}, "account"), el("th", {}, "buckets"), ...roles.map((r) => el("th", { class: "num" }, r)), el("th", { class: "num" }, "requests"), el("th", { class: "num" }, "tokens")));
+  for (const f of status.flows || []) {
+    t.append(el("tr", {}, el("td", {}, f.client), el("td", {}, f.account), el("td", {}, (f.buckets || []).join(", ")),
+      ...roles.map((r) => el("td", { class: "num" }, f.picks_by_role?.[r] || "")), el("td", { class: "num" }, f.requests), el("td", { class: "num" }, f.tokens.toLocaleString())));
+  }
+  if (!(status.flows || []).length) t.append(el("tr", {}, el("td", { colspan: 10, class: "meta" }, "No traffic yet.")));
+  renderDecisions();
+}
+function renderDecisions() {
+  const fc = $("fClient").value.toLowerCase(), fa = $("fAccount").value.toLowerCase(), fo = $("fOutcome").value, fr = $("fRole").value;
+  const t = $("decisions");
+  t.replaceChildren(el("tr", {}, el("th", {}, "time"), el("th", {}, "client"), el("th", {}, "model"), el("th", {}, "session"), el("th", {}, "→ account"), el("th", {}, "role"), el("th", {}, "why")));
+  const ds = (status.recent_decisions || []).slice().reverse().filter((d) =>
+    (!fc || d.client.toLowerCase().includes(fc)) && (!fa || (d.account || "").toLowerCase().includes(fa)) && (!fo || d.outcome === fo) && (!fr || d.role === fr));
+  for (const d of ds) {
+    const det = el("details", {}, el("summary", {}, d.reason),
+      el("div", { class: "why" }, "policy: " + (d.policy || "")),
+      el("ol", { class: "plan" }, ...(d.ranking || []).map((r) => el("li", { class: "why" }, r))),
+      (d.excluded || []).length ? el("div", { class: "why err" }, "excluded: " + d.excluded.join(" · ")) : null);
+    t.append(el("tr", {}, el("td", { class: "mono" }, new Date(d.time).toLocaleTimeString()), el("td", {}, d.client), el("td", { class: "mono" }, d.model || ""),
+      el("td", {}, d.session), el("td", {}, d.outcome === "selected" ? d.account + ((d.buckets || []).length ? ` [${d.buckets.join(",")}]` : "") : el("span", { class: "err" }, d.outcome)),
+      el("td", {}, d.role ? el("span", { class: "chip " + d.role }, d.role) : ""), el("td", {}, det)));
+  }
+  if (!ds.length) t.append(el("tr", {}, el("td", { colspan: 7, class: "meta" }, "No decisions match.")));
+}
+for (const id of ["fClient", "fAccount", "fOutcome", "fRole"]) $(id).addEventListener("input", () => status && renderDecisions());
+
+// --- overrides ----------------------------------------------------------
+function renderOverrides() {
+  const list = $("ovList"); list.replaceChildren();
+  const ovs = Object.entries(status.overrides || {});
+  if (!ovs.length) list.append(el("div", { class: "meta" }, "None."));
+  for (const [client, o] of ovs) {
+    list.append(el("div", { class: "card", style: "margin-bottom:8px" },
+      el("h3", {}, client === "*" ? "all clients" : client, o.policy ? el("span", { class: "chip last-resort" }, "policy " + o.policy) : null, o.spare_factor ? el("span", { class: "chip" }, "spare factor " + o.spare_factor) : null),
+      el("div", { class: "meta" }, (o.until ? "expires " + when(o.until) + " (in " + until(o.until) + ")" : "until cleared") + (o.note ? " · " + o.note : "")),
+      el("button", { class: "sec danger", style: "margin-top:6px", onclick: async () => { try { await api("/override", { client, clear: true }); toast("Override cleared"); refresh(); } catch (e) { toast(e.message, true); } } }, "Clear")));
+  }
+  const sel = $("ovClient"), cur = sel.value;
+  sel.replaceChildren(el("option", { value: "*" }, "* all clients"), ...(status.clients || []).map((c) => el("option", { value: c.client }, c.client)));
+  if (cur) sel.value = cur;
+}
+$("ovApply").onclick = async () => {
+  const body = { client: $("ovClient").value, policy: $("ovPolicy").value, for: $("ovFor").value, note: $("ovNote").value };
+  const sf = parseFloat($("ovSpare").value);
+  if (sf) { body.spare_factor = sf; if (body.client !== "*") return toast("Spare factor overrides apply to all clients; choose “* all clients”.", true); }
+  if (!body.policy && !sf) return toast("Choose a policy and/or a spare factor.", true);
+  try { await api("/override", body); toast("Override applied"); refresh(); } catch (e) { toast(e.message, true); }
+};
+
+// --- config -------------------------------------------------------------
+const GLOBALS = [
+  ["spare_factor", "number", "Lend while remaining > factor × expected"], ["min_spare", "number", "Spare needed to start lending"],
+  ["min_remaining", "number", "Block a window below this share"], ["min_history", "text", "History before lending"],
+  ["session_ttl", "text", "Session pin lifetime"], ["probe_interval", "text", "Probe accounts without data"],
+  ["stale_after", "text", "Limit flags expire after"], ["allow_extra_usage", "checkbox", "Allow paid extra usage"],
+  ["log_decisions", "checkbox", "Log every decision"], ["pacing.enabled", "checkbox", "Pace near refills"],
+  ["pacing.horizon", "text", "Pace if refill within"], ["pacing.max_delay", "text", "Max delay per request"],
+  ["wait.horizon", "text", "Wait policy: refill within"], ["wait.max_wait", "text", "Wait policy: max hold"],
+];
+function getPath(o, p) { return p.split(".").reduce((x, k) => x?.[k], o); }
+function setPath(o, p, v) { const ks = p.split("."); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; x[ks.at(-1)] = v; }
+function markDirty() { dirty = true; $("rawJson").value = JSON.stringify(draft, null, 2); }
+
+function renderConfig(force) {
+  if (dirty && !force) return;
+  draft = structuredClone(cfgView.effective);
+  dirty = false;
+  $("cfgSource").textContent = cfgView.source === "runtime" ? `runtime config (saved ${when(cfgView.overlay_at)}${cfgView.overlay_note ? " — " + cfgView.overlay_note : ""})` : "config.yaml";
+  $("cfgErr").textContent = cfgView.overlay_error || "";
+  $("knownAccounts").textContent = (cfgView.known_accounts || []).join(" · ") || "none yet";
+  $("baseYaml").textContent = cfgView.base_yaml || "";
+  const g = $("globals"); g.replaceChildren();
+  for (const [p, type, help] of GLOBALS) {
+    const v = getPath(draft, p);
+    const inp = el("input", { type, step: type === "number" ? "0.01" : null });
+    if (type === "checkbox") inp.checked = !!v; else inp.value = v ?? "";
+    inp.addEventListener("input", () => { setPath(draft, p, type === "checkbox" ? inp.checked : type === "number" ? parseFloat(inp.value) : inp.value); markDirty(); });
+    g.append(el("div", {}, el("label", { title: help }, p), inp, el("div", { class: "meta" }, help)));
+  }
+  renderBuckets(); renderClientsCfg(); renderUnknown();
+  $("rawJson").value = JSON.stringify(draft, null, 2);
+}
+function listEditor(values, onChange, suggestions) {
+  const box = el("div", { class: "row", style: "margin:4px 0" });
+  const draw = () => {
+    box.replaceChildren(...values.map((v, i) => el("span", { class: "chip", style: "font-size:13px" }, (i + 1) + ". " + v, " ",
+      i > 0 ? el("a", { href: "#", title: "move up", onclick: (e) => { e.preventDefault(); [values[i - 1], values[i]] = [values[i], values[i - 1]]; onChange(); draw(); } }, "↑") : null, " ",
+      el("a", { href: "#", title: "remove", onclick: (e) => { e.preventDefault(); values.splice(i, 1); onChange(); draw(); } }, "✕"))));
+    const inp = el("input", { list: suggestions ? "dl-" + suggestions.id : null, placeholder: "add…", style: "min-width:200px" });
+    inp.addEventListener("change", () => { const v = inp.value.trim(); if (v && !values.includes(v)) { values.push(v); onChange(); draw(); } });
+    box.append(inp);
+    if (suggestions) box.append(el("datalist", { id: "dl-" + suggestions.id }, ...suggestions.items.map((s) => el("option", { value: s }))));
+  };
+  draw();
+  return box;
+}
+function accountIdents() { return (cfgView.known_accounts || []).map((a) => a.replace(/ \([^)]*\)$/, "")); }
+function renderBuckets() {
+  const b = $("buckets"); b.replaceChildren();
+  for (const name of Object.keys(draft.buckets || {}).sort()) {
+    b.append(el("div", { class: "card", style: "margin-bottom:8px" },
+      el("h3", {}, "bucket ", el("span", { class: "mono" }, name), el("span", { class: "spacer" }),
+        el("button", { class: "sec danger", onclick: () => { delete draft.buckets[name]; for (const c of Object.values(draft.clients)) c.buckets = (c.buckets || []).filter((x) => x !== name); markDirty(); renderBuckets(); renderClientsCfg(); } }, "delete")),
+      listEditor(draft.buckets[name], markDirty, { id: "acc-" + name, items: accountIdents() })));
+  }
+}
+function renderClientsCfg() {
+  const box = $("clientsCfg"); box.replaceChildren();
+  const bucketNames = Object.keys(draft.buckets || {}).sort();
+  const clientCard = (name, c, isDefault) => {
+    const pol = el("select", {}, ...["any", "wait", "fail"].map((p) => el("option", { value: p }, p)));
+    pol.value = c.on_exhausted || "any"; pol.onchange = () => { c.on_exhausted = pol.value; markDirty(); };
+    const borrow = el("input", { type: "checkbox" }); borrow.checked = c.borrow !== false; borrow.onchange = () => { c.borrow = borrow.checked; markDirty(); };
+    c.buckets = c.buckets || []; c.keys = c.keys || [];
+    const keys = el("textarea", { style: "min-height:50px" }); keys.value = c.keys.join("\n");
+    keys.addEventListener("input", () => { c.keys = keys.value.split(/\s+/).map((s) => s.trim().toLowerCase()).filter(Boolean); markDirty(); });
+    return el("div", { class: "card", style: "margin-bottom:8px" },
+      el("h3", {}, isDefault ? "default client (unknown keys)" : el("span", { class: "mono" }, name), el("span", { class: "spacer" }),
+        isDefault ? null : el("button", { class: "sec danger", onclick: () => { delete draft.clients[name]; markDirty(); renderClientsCfg(); } }, "delete")),
+      el("div", { class: "row" }, el("div", {}, el("label", {}, "when exhausted"), pol), el("div", {}, el("label", {}, "borrow spare from other buckets"), borrow)),
+      el("label", {}, "buckets (preference order)"), listEditor(c.buckets, markDirty, { id: "bk-" + (name || "default"), items: bucketNames }),
+      isDefault ? null : el("div", {}, el("label", {}, "keys (one per line)"), keys));
+  };
+  for (const name of Object.keys(draft.clients || {}).sort()) box.append(clientCard(name, draft.clients[name], false));
+  draft.default_client = draft.default_client || {};
+  box.append(clientCard("", draft.default_client, true));
+}
+function renderUnknown() {
+  const box = $("unknownKeys"); box.replaceChildren();
+  const ks = status?.unknown_keys || [];
+  if (!ks.length) box.append(el("div", { class: "meta" }, "None — every key seen belongs to a client."));
+  for (const k of ks) {
+    const inp = el("input", { list: "dl-clients", placeholder: "client name (new or existing)" });
+    box.append(el("div", { class: "card", style: "margin-bottom:8px" },
+      el("div", { class: "row", style: "margin:0" }, el("div", {}, el("strong", {}, k.alias), el("div", { class: "meta" }, "last seen " + when(k.last_seen)), el("div", { class: "mono why" }, k.scope)),
+        inp, el("button", { class: "act", onclick: async () => {
+          if (!inp.value.trim()) return toast("Enter a client name", true);
+          try { cfgView = await api("/config", { assign_key: { scope: k.scope, client: inp.value.trim() }, note: "assign " + k.alias + " → " + inp.value.trim() }); dirty = false; toast("Key assigned"); refresh(true); } catch (e) { toast(e.message, true); }
+        } }, "Assign"))));
+  }
+  box.append(el("datalist", { id: "dl-clients" }, ...Object.keys(draft?.clients || {}).map((c) => el("option", { value: c }))));
+}
+$("addBucket").onclick = () => { const n = prompt("Bucket name"); if (n && !draft.buckets[n]) { draft.buckets[n] = []; markDirty(); renderBuckets(); renderClientsCfg(); } };
+$("addClient").onclick = () => { const n = prompt("Client name (e.g. machine name)"); if (n && !draft.clients[n]) { draft.clients[n] = { keys: [], buckets: [], on_exhausted: "any", borrow: true }; markDirty(); renderClientsCfg(); } };
+$("cfgSave").onclick = async () => {
+  try { cfgView = await api("/config", { config: draft, note: $("cfgNote").value }); dirty = false; renderConfig(true); toast("Runtime config saved and applied"); refresh(); }
+  catch (e) { $("cfgErr").textContent = e.message; toast("Not saved: " + e.message, true); }
+};
+$("rawApply").onclick = async () => {
+  let doc; try { doc = JSON.parse($("rawJson").value); } catch (e) { return toast("Invalid JSON: " + e.message, true); }
+  try { cfgView = await api("/config", { config: doc, note: $("cfgNote").value || "raw JSON edit" }); dirty = false; renderConfig(true); toast("Runtime config saved"); refresh(); }
+  catch (e) { $("cfgErr").textContent = e.message; toast("Not saved: " + e.message, true); }
+};
+$("cfgRevert").onclick = async () => {
+  if (!confirm("Drop the runtime config and use config.yaml again?")) return;
+  try { cfgView = await api("/config", { revert: true }); dirty = false; renderConfig(true); toast("Reverted to config.yaml"); refresh(); } catch (e) { toast(e.message, true); }
+};
+
+// --- loop ---------------------------------------------------------------
+async function refresh(withConfig) {
+  if (!key) return showLogin();
+  try {
+    status = await api("/status?decisions=200");
+    if (withConfig || !cfgView) cfgView = await api("/config");
+    $("meta").textContent = `${status.plugin} ${status.version} · ${status.mode} · config: ${status.config_source} · spare factor ${status.spare_factor} · history ${status.history} · ${status.session_bindings} sessions · ${new Date().toLocaleTimeString()}`;
+    renderOverview(); renderTraffic(); renderOverrides(); renderConfig(withConfig);
+  } catch (e) { if (e.message !== "unauthorized") toast("Refresh failed: " + e.message, true); }
+}
+function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => refresh(false), 5000); }
+$("auto").onchange = schedule;
+applyTheme();
+try { key = sessionStorage.getItem(KEY_STORE) || ""; } catch {}
+key = key || dashboardKey();
+try { const t = sessionStorage.getItem("fefo-router:tab"); if (t) document.querySelector(`#tabs button[data-tab="${t}"]`)?.click(); } catch {}
+refresh(true); schedule();
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -34,13 +35,13 @@ type AccountView struct {
 
 // ClientView is one client in the status report.
 type ClientView struct {
-	Client  string                       `json:"client"`
-	Buckets []string                     `json:"buckets"`
-	Policy  string                       `json:"policy"`
-	Borrow  bool                         `json:"borrow"`
-	Demand  map[string]rateInfo          `json:"demand"`
-	Plans   map[string][]PlanEntryView   `json:"plans"`
-	Gate    map[string]string            `json:"gate,omitempty"`
+	Client  string                     `json:"client"`
+	Buckets []string                   `json:"buckets"`
+	Policy  string                     `json:"policy"`
+	Borrow  bool                       `json:"borrow"`
+	Demand  map[string]rateInfo        `json:"demand"`
+	Plans   map[string][]PlanEntryView `json:"plans"`
+	Gate    map[string]string          `json:"gate,omitempty"`
 }
 
 // PlanEntryView is one ranked account.
@@ -67,7 +68,90 @@ type Status struct {
 	Accounts     []AccountView       `json:"accounts"`
 	Clients      []ClientView        `json:"clients"`
 	Decisions    []Decision          `json:"recent_decisions"`
-	UnknownKeys  []string            `json:"unknown_keys_seen,omitempty"`
+	UnknownKeys  []UnknownKey        `json:"unknown_keys,omitempty"`
+	Warnings     []string            `json:"warnings,omitempty"`
+	ConfigSource string              `json:"config_source"`
+	Flows        []Flow              `json:"flows"`
+}
+
+// UnknownKey is a client API key (as its caller scope) not in any client.
+type UnknownKey struct {
+	Alias    string    `json:"alias"`
+	Scope    string    `json:"scope"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+// Flow aggregates traffic from one client to one account since plugin load.
+type Flow struct {
+	Client   string         `json:"client"`
+	Account  string         `json:"account"`
+	Buckets  []string       `json:"buckets,omitempty"`
+	Picks    map[string]int `json:"picks_by_role"`
+	Requests int            `json:"requests"`
+	Tokens   int64          `json:"tokens"`
+}
+
+func (r *Router) flowsLocked() []Flow {
+	byKey := map[[2]string]*Flow{}
+	get := func(c, a string) *Flow {
+		k := [2]string{c, a}
+		if f, ok := byKey[k]; ok {
+			return f
+		}
+		f := &Flow{Client: c, Account: a, Picks: map[string]int{}}
+		for _, st := range r.accounts {
+			if st.Info.display() == a {
+				f.Buckets = r.cfg.bucketsOf(st.Info)
+			}
+		}
+		byKey[k] = f
+		return f
+	}
+	for k, n := range r.metrics.picks {
+		if k[1] == "" {
+			continue
+		}
+		get(k[0], k[1]).Picks[k[2]] += int(n)
+	}
+	for k, n := range r.metrics.tokens {
+		get(k[0], k[1]).Tokens += int64(n)
+	}
+	for k, n := range r.metrics.requests {
+		get(k[0], k[1]).Requests += int(n)
+	}
+	out := make([]Flow, 0, len(byKey))
+	for _, f := range byKey {
+		out = append(out, *f)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Client != out[j].Client {
+			return out[i].Client < out[j].Client
+		}
+		return out[i].Account < out[j].Account
+	})
+	return out
+}
+
+// warningsLocked reports configuration that cannot work as intended.
+func (r *Router) warningsLocked() []string {
+	var out []string
+	for _, name := range sortedKeys(r.cfg.Buckets) {
+		for _, ident := range r.cfg.Buckets[name] {
+			found := false
+			for _, a := range r.accounts {
+				found = found || a.Info.matches(ident)
+			}
+			if !found {
+				out = append(out, fmt.Sprintf("bucket %s: %q matches no account CPA knows", name, ident))
+			}
+		}
+	}
+	for _, alias := range sortedKeys(r.cfg.Clients) {
+		if len(r.cfg.Clients[alias].Keys) == 0 {
+			out = append(out, fmt.Sprintf("client %s: no keys configured, it can never be recognised", alias))
+		}
+	}
+	return out
 }
 
 // Status builds the diagnostic snapshot.
@@ -84,6 +168,7 @@ func (r *Router) Status(decisions int) Status {
 		StateFile: cfg.StateFile, StateError: r.stateErr,
 		Bindings:  len(r.bindings),
 		Overrides: map[string]Override{},
+		Warnings:  r.warningsLocked(),
 	}
 	for k, o := range r.overrides {
 		if o.active(now) {
@@ -120,14 +205,26 @@ func (r *Router) Status(decisions int) Status {
 		}
 	}
 	clients := sortedKeys(cfg.Clients)
-	unknown := map[string]bool{}
-	for _, d := range r.decisions {
-		if _, ok := cfg.Clients[d.Client]; !ok {
-			unknown[d.Client] = true
+	for _, scope := range sortedKeys(r.unknownScopes) {
+		if _, known := r.lookupScopeLocked(scope); known {
+			delete(r.unknownScopes, scope) // assigned since
+			continue
 		}
+		st.UnknownKeys = append(st.UnknownKeys, UnknownKey{Alias: unknownAlias(scope), Scope: scope, LastSeen: r.unknownScopes[scope]})
 	}
-	st.UnknownKeys = sortedKeys(unknown)
-	for _, c := range append(clients, st.UnknownKeys...) {
+	st.ConfigSource = "config.yaml"
+	if strings.TrimSpace(r.overlay) != "" && r.overlayErr == "" {
+		st.ConfigSource = "runtime (edited " + fmtTime(r.overlayAt) + ")"
+	}
+	if r.overlayErr != "" {
+		st.Warnings = append(st.Warnings, r.overlayErr)
+	}
+	st.Flows = r.flowsLocked()
+	unknownAliases := []string{}
+	for _, u := range st.UnknownKeys {
+		unknownAliases = append(unknownAliases, u.Alias)
+	}
+	for _, c := range append(clients, unknownAliases...) {
 		cc := r.clientConfigLocked(c)
 		pol, src := r.policyLocked(c, now)
 		cv := ClientView{Client: c, Buckets: cc.Buckets, Policy: string(pol) + " (" + src + ")", Borrow: cc.BorrowEnabled(),
@@ -158,6 +255,9 @@ func (s Status) Text() string {
 	}
 	if s.StateError != "" {
 		fmt.Fprintf(&b, "state file error: %s\n", s.StateError)
+	}
+	for _, w := range s.Warnings {
+		fmt.Fprintf(&b, "WARNING: %s\n", w)
 	}
 	for k, o := range s.Overrides {
 		fmt.Fprintf(&b, "override %s: policy=%s spare_factor=%g until %s %s\n", k, o.Policy, o.SpareFactor, fmtTime(o.Until), o.Note)
@@ -217,7 +317,7 @@ func (s Status) Text() string {
 	return b.String()
 }
 
-// overrideRequest is the body of POST /burndown/override.
+// overrideRequest is the body of POST /fefo/override.
 type overrideRequest struct {
 	Client      string  `json:"client"`
 	Policy      string  `json:"policy"`

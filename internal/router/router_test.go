@@ -500,3 +500,12 @@ func TestConfigSaveRefusesUnreachableWaitClient(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEmailMatchesAuthFileName(t *testing.T) {
+	a := accountInfo{ID: "claude-64d80597-me@example.eu.json"}
+	c := accountInfo{ID: "codex-556dd76b-me@example.eu-plus.json"}
+	other := accountInfo{ID: "claude-1-notme@example.eu.json"}
+	if !a.matches("me@example.eu") || !c.matches("ME@example.eu") || other.matches("me@example.eu") || a.matches("e@example.eu") {
+		t.Fatal("e-mail matching against auth file IDs is wrong")
+	}
+}

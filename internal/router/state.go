@@ -40,6 +40,26 @@ func (a accountInfo) matches(ident string) bool {
 			return true
 		}
 	}
+	// CPA names OAuth files "<provider>-<hash>-<email>[-plan].json" and may
+	// give no label, so an e-mail also matches as a whole segment of the ID.
+	if strings.Contains(ident, "@") {
+		for _, v := range []string{a.ID, a.Name} {
+			v = strings.ToLower(v)
+			for i := strings.Index(v, ident); i >= 0; {
+				end := i + len(ident)
+				before := i == 0 || v[i-1] == '-' || v[i-1] == '/' || v[i-1] == '_'
+				after := end == len(v) || v[end] == '.' || v[end] == '-' || v[end] == '_'
+				if before && after {
+					return true
+				}
+				next := strings.Index(v[i+1:], ident)
+				if next < 0 {
+					break
+				}
+				i += 1 + next
+			}
+		}
+	}
 	return false
 }
 

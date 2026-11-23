@@ -62,6 +62,7 @@ type Router struct {
 	metrics      metrics
 	dirty        bool
 	hostSyncAt   time.Time
+	hostReady    bool // a host auth list with IDs was applied
 	hostErr      string
 	stateErr     string
 	loadedFrom   string
@@ -370,8 +371,21 @@ func (r *Router) Refresh(ctx context.Context) error {
 }
 
 func (r *Router) applyHostLocked(entries []pluginapi.HostAuthFileEntry, now time.Time) {
+	withID := 0
+	for _, e := range entries {
+		if strings.TrimSpace(e.ID) != "" {
+			withID++
+		}
+	}
+	if withID == 0 && len(entries) > 0 {
+		// At startup CPA answers from disk before its auth manager is ready;
+		// those entries carry no IDs. Wait for the next sync.
+		r.hostErr = "CPA auth list not ready yet (no credential IDs); retrying"
+		return
+	}
 	r.hostErr = ""
 	r.hostSyncAt = now
+	r.hostReady = true
 	for _, e := range entries {
 		id := strings.TrimSpace(e.ID)
 		if id == "" {

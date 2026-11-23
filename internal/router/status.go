@@ -136,6 +136,9 @@ func (r *Router) flowsLocked() []Flow {
 func (r *Router) warningsLocked() []string {
 	var out []string
 	for _, name := range sortedKeys(r.cfg.Buckets) {
+		if !r.hostReady {
+			break // accounts are not all known until CPA's auth list arrives
+		}
 		for _, ident := range r.cfg.Buckets[name] {
 			found := false
 			for _, a := range r.accounts {

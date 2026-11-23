@@ -509,3 +509,16 @@ func TestEmailMatchesAuthFileName(t *testing.T) {
 		t.Fatal("e-mail matching against auth file IDs is wrong")
 	}
 }
+
+func TestHostListWithoutIDsIsNotReady(t *testing.T) {
+	h := newHarness(t, "")
+	r := New(WithClock(func() time.Time { return h.now }))
+	r.SetConfig(testConfig(t, ""))
+	r.mu.Lock()
+	r.applyHostLocked([]pluginapi.HostAuthFileEntry{{Name: "claude-x-d@example.com.json"}}, h.now)
+	r.mu.Unlock()
+	st := r.Status(0)
+	if len(st.Warnings) != 0 || st.HostError == "" {
+		t.Fatalf("warnings %v host error %q", st.Warnings, st.HostError)
+	}
+}

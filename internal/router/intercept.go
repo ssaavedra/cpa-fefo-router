@@ -39,7 +39,11 @@ func (r *Router) Intercept(req pluginapi.RequestInterceptRequest) pluginapi.Requ
 		r.metrics.paced(client, g.Delay)
 		r.mu.Unlock()
 		if r.Config().LogDecisions && r.log != nil {
-			r.log("info", fmt.Sprintf("fefo pace client=%s %s +%s: %s", client, provider, g.Delay.Round(time.Millisecond), g.Reason),
+			verb := "pace"
+			if g.Terminate {
+				verb = "wait"
+			}
+			r.log("info", fmt.Sprintf("fefo %s client=%s %s +%s: %s", verb, client, provider, g.Delay.Round(time.Millisecond), g.Reason),
 				map[string]any{"client": client, "provider": provider, "delay_ms": g.Delay.Milliseconds(), "reason": g.Reason})
 		}
 		if g.Terminate {

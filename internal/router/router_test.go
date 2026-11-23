@@ -150,14 +150,17 @@ func TestNoLendingWithoutHistory(t *testing.T) {
 // per hour on d; connect burns `connRate` per hour on p.
 func (h *harness) buildHistory(hours int, pniRate, connRate float64, dReset, iReset, pReset time.Time, d0, i0, p0 float64) (float64, float64, float64) {
 	dU, iU, pU := d0, i0, p0
-	for k := 0; k < hours; k++ {
-		h.advance(time.Hour)
-		dU += pniRate
-		pU += connRate
+	// Each client sends a request every 5 minutes, as an active agent does.
+	for k := 0; k < hours*12; k++ {
+		h.advance(5 * time.Minute)
+		dU += pniRate / 12
+		pU += connRate / 12
 		short := h.now.Add(3 * time.Hour)
 		h.observe("pni", acctD, dU, dReset, 0.2, short, 1000)
 		h.observe("connect", acctP, pU, pReset, 0.2, short, 1000)
-		h.observe("pni", acctI, iU, iReset, 0.0, short, 0) // i idle, data refreshed
+		if k%12 == 0 {
+			h.observe("pni", acctI, iU, iReset, 0.0, short, 0) // i idle, data refreshed hourly
+		}
 	}
 	return dU, iU, pU
 }
@@ -436,5 +439,64 @@ func TestExampleConfigParses(t *testing.T) {
 	}
 	if cfg.SpareFactor != 1.5 || len(cfg.Clients) != 2 || cfg.Clients["ci"].OnExhausted != PolicyWait {
 		t.Fatalf("%+v", cfg)
+	}
+}
+
+func TestIdleGapUsageIsExternal(t *testing.T) {
+	h := newHarness(t, "")
+	h.r.observeStart = h.now.Add(-22 * time.Hour) // 24h of observation by the end
+	reset := h.now.Add(100 * time.Hour)
+	short := h.now.Add(3 * time.Hour)
+	h.observe("connect", acctP, 0.20, reset, 0.1, short, 100)
+	h.advance(2 * time.Hour) // nothing through CPA; someone used the account elsewhere
+	h.observe("connect", acctP, 0.40, reset, 0.1, short, 100)
+	h.advance(2 * time.Minute)
+	h.observe("connect", acctP, 0.41, reset, 0.1, short, 100)
+	h.r.mu.Lock()
+	pc := h.r.newPlanContextLocked("claude", h.now)
+	ext, conn := pc.rate(externalClient, acctP), pc.rate("connect", "")
+	h.r.mu.Unlock()
+	if ext.Day < 0.19/24 || conn.Day > 0.011/24+1e-9 || conn.Day <= 0 {
+		t.Fatalf("external %+v connect %+v", ext, conn)
+	}
+}
+
+func TestLastResortPinYieldsToBetterAccount(t *testing.T) {
+	h := newHarness(t, "")
+	// pni's own buckets are both exhausted: it lands on p as last resort.
+	h.seed(1.0, 1.0, 0.2, h.now.Add(72*time.Hour), h.now.Add(96*time.Hour), h.now.Add(48*time.Hour))
+	d := h.expectPick("pni", "s1", acctP)
+	if d.Role != RoleLastResort {
+		t.Fatalf("role %s", d.Role)
+	}
+	// d refills: the same session leaves the last-resort account.
+	h.observe("pni", acctD, 0.0, h.now.Add(7*24*time.Hour), 0.0, h.now.Add(5*time.Hour), 10)
+	d = h.expectPick("pni", "s1", acctD)
+	if d.Session != "moved" {
+		t.Fatalf("session %s", d.Session)
+	}
+}
+
+func TestNeverDelegatesToBlockedAccounts(t *testing.T) {
+	h := newHarness(t, "")
+	h.seed(1.0, 1.0, 1.0, h.now.Add(72*time.Hour), h.now.Add(96*time.Hour), h.now.Add(48*time.Hour))
+	resp, d := h.pick("bot", "s1") // policy any, everything exhausted
+	if !resp.Reject || resp.DelegateBuiltin != "" {
+		t.Fatalf("%+v %+v", resp, d)
+	}
+}
+
+func TestConfigSaveRefusesUnreachableWaitClient(t *testing.T) {
+	h := newHarness(t, "")
+	h.seed(0.2, 0.2, 0.2, h.now.Add(72*time.Hour), h.now.Add(96*time.Hour), h.now.Add(48*time.Hour))
+	doc := h.r.Config().Doc()
+	doc.Buckets["p"] = []string{"typo@example.com"}
+	body, _ := json.Marshal(map[string]any{"config": doc})
+	if _, err := h.r.UpdateConfig(body); err == nil || !strings.Contains(err.Error(), "no account") {
+		t.Fatalf("err = %v", err)
+	}
+	body, _ = json.Marshal(map[string]any{"config": doc, "force": true})
+	if _, err := h.r.UpdateConfig(body); err != nil {
+		t.Fatal(err)
 	}
 }

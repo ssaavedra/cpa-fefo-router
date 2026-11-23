@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -149,21 +150,34 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 		return pluginapi.SchedulerPickResponse{AuthID: id, Handled: true}, d
 	}
 
-	// A pinned session stays while its account is still in the client's plan.
+	// A pinned session stays while its account is still in the client's plan
+	// as own or spare. A last-resort pin is kept only while nothing better is
+	// offered, so a borrowed session leaves the lender once its spare is gone.
 	// Borrowed accounts keep sessions until their spare drops to zero.
+	betterThanLastResort := false
+	for _, p := range order {
+		if _, ok := cand[p.ID]; ok && p.Role != RoleLastResort {
+			betterThanLastResort = true
+			break
+		}
+	}
 	if b, ok := r.bindings[bindKey]; ok && bindKey != "" && now.Before(b.Expires) {
 		if _, offered := cand[b.AuthID]; offered {
 			if sess != "" {
 				d.Session = "pinned"
 			}
+			// Spare hysteresis first: a borrowed account keeps its sessions while
+			// spare > 0, even if it dropped below min_spare for new ones.
+			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 && !contains(r.ownIDsLocked(pc, client), b.AuthID) {
+				return choose(b.AuthID, RoleSpare, fmt.Sprintf("pinned: spare %.2f still above 0", e.Spare))
+			}
 			for _, p := range order {
-				if p.ID == b.AuthID {
+				if p.ID == b.AuthID && (p.Role != RoleLastResort || !betterThanLastResort) {
 					return choose(p.ID, p.Role, "pinned: "+p.Why)
 				}
 			}
-			// Spare hysteresis: a borrowed account stays while spare > 0.
-			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 {
-				return choose(b.AuthID, RoleSpare, fmt.Sprintf("pinned: spare %.2f still above 0", e.Spare))
+			if sess != "" {
+				d.Session = "moved"
 			}
 		}
 	}
@@ -174,20 +188,42 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 		}
 	}
 
-	switch policy {
-	case PolicyFail:
-		d.Outcome, d.Reason = "rejected", "no own or spare account usable; policy fail"
-		return pluginapi.SchedulerPickResponse{Handled: true, Reject: true, RejectCode: RejectExhausted,
-			RejectReason: "fefo-router: client " + client + " has no usable account (policy fail)"}, d
-	case PolicyWait:
-		d.Outcome, d.Reason = "rejected", "no own or spare account usable; policy wait"
+	// Everything offered is blocked in our view (exhausted, cooling down, or
+	// only serving from paid extra usage). Never let CPA pick one of those.
+	var blocked []string
+	for id := range cand {
+		if e := pc.evals[id]; e != nil && !e.Usable {
+			blocked = append(blocked, id)
+		}
+	}
+	sort.Strings(blocked)
+	if len(blocked) == len(cand) || policy != PolicyAny {
+		return r.rejectLocked(d, policy, client)
+	}
+	// Policy any, and some offered credential is unknown to us: let CPA
+	// fill-first among the ones not known to be blocked.
+	d.Outcome, d.Reason = "delegated", "nothing in plan offered; CPA fill-first among unblocked"
+	return pluginapi.SchedulerPickResponse{Handled: true, DelegateBuiltin: pluginapi.SchedulerBuiltinFillFirst, ExcludeCandidates: blocked}, d
+}
+
+// ownIDsLocked lists a client's own account IDs for this provider.
+func (r *Router) ownIDsLocked(pc *planContext, client string) []string {
+	var out []string
+	for _, e := range pc.ownList(r.clientConfigLocked(client)) {
+		out = append(out, e.ID)
+	}
+	return out
+}
+
+func (r *Router) rejectLocked(d Decision, policy Policy, client string) (pluginapi.SchedulerPickResponse, Decision) {
+	if policy == PolicyWait {
+		d.Outcome, d.Reason = "rejected", "no usable account; policy wait"
 		return pluginapi.SchedulerPickResponse{Handled: true, Reject: true, RejectCode: RejectWait,
 			RejectReason: "fefo-router: client " + client + " is waiting for quota to refill"}, d
 	}
-	// Policy any with nothing usable in our view: CPA may know better (no
-	// data for these accounts). Let it fill-first among what it offered.
-	d.Outcome, d.Reason = "delegated", "nothing usable in plan; CPA fill-first among offered"
-	return pluginapi.SchedulerPickResponse{Handled: true, DelegateBuiltin: pluginapi.SchedulerBuiltinFillFirst}, d
+	d.Outcome, d.Reason = "rejected", "no usable account; policy "+string(policy)
+	return pluginapi.SchedulerPickResponse{Handled: true, Reject: true, RejectCode: RejectExhausted,
+		RejectReason: "fefo-router: client " + client + " has no usable account (policy " + string(policy) + ")"}, d
 }
 
 func (r *Router) logDecision(d Decision) {

@@ -162,6 +162,8 @@ type configRequest struct {
 		Client string `json:"client"`
 	} `json:"assign_key"`
 	Note string `json:"note"`
+	// Force saves even if a wait/fail client would have no account.
+	Force bool `json:"force"`
 }
 
 // UpdateConfig applies a browser edit. The runtime config persists in the
@@ -209,9 +211,16 @@ func (r *Router) UpdateConfig(body []byte) (ConfigView, error) {
 		r.mu.Unlock()
 		return ConfigView{}, fmt.Errorf("send config, yaml, assign_key or revert")
 	}
-	if _, err := ParseConfig([]byte(text)); err != nil {
+	next, err := ParseConfig([]byte(text))
+	if err != nil {
 		r.mu.Unlock()
 		return ConfigView{}, err
+	}
+	if !req.Force {
+		if err := r.unreachableLocked(next); err != nil {
+			r.mu.Unlock()
+			return ConfigView{}, err
+		}
 	}
 	r.overlay, r.overlayAt, r.overlayNote = text, now, req.Note
 	r.applyOverlayLocked()
@@ -222,4 +231,31 @@ func (r *Router) UpdateConfig(body []byte) (ConfigView, error) {
 		r.log("info", "fefo runtime config updated", map[string]any{"note": req.Note})
 	}
 	return r.ConfigView(), nil
+}
+
+// unreachableLocked refuses configs where a wait/fail client's buckets match
+// no account CPA knows: such a client would only ever get 429s or errors.
+func (r *Router) unreachableLocked(cfg Config) error {
+	var bad []string
+	for _, alias := range sortedKeys(cfg.Clients) {
+		c := cfg.Clients[alias]
+		if c.OnExhausted == PolicyAny || len(c.Buckets) == 0 {
+			continue
+		}
+		found := false
+		for _, b := range c.Buckets {
+			for _, ident := range cfg.Buckets[b] {
+				for _, st := range r.accounts {
+					found = found || st.Info.matches(ident)
+				}
+			}
+		}
+		if !found {
+			bad = append(bad, fmt.Sprintf("%s (%s, buckets %s)", alias, c.OnExhausted, strings.Join(c.Buckets, ",")))
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("these clients would have no account and would only get errors: %s — fix the bucket accounts or save with force", strings.Join(bad, "; "))
+	}
+	return nil
 }

@@ -242,7 +242,13 @@ func (r *Router) Status(decisions int) Status {
 	if decisions > n {
 		decisions = n
 	}
-	st.Decisions = append([]Decision(nil), r.decisions[n-decisions:]...)
+	st.Decisions = append([]Decision{}, r.decisions[n-decisions:]...)
+	if st.Accounts == nil {
+		st.Accounts = []AccountView{}
+	}
+	if st.Clients == nil {
+		st.Clients = []ClientView{}
+	}
 	return st
 }
 

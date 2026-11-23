@@ -202,12 +202,18 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 		used := 1 - w.Remaining
 		cur := usedSample{At: at, Window: w.Name, Used: used, Reset: w.ResetAt}
 		if prev := st.LastWeekly; prev != nil {
+			delta := 0.0
 			switch {
 			case sameReset(prev.Reset, w.ResetAt) && used > prev.Used:
-				b.Delta += used - prev.Used
+				delta = used - prev.Used
 			case !sameReset(prev.Reset, w.ResetAt) && w.ResetAt.After(prev.Reset) && !prev.Reset.IsZero():
 				// New weekly period: everything used so far happened after the reset.
-				b.Delta += used
+				delta = used
+			}
+			if at.Sub(prev.At) > attributionGap {
+				b.External += delta
+			} else {
+				b.Delta += delta
 			}
 		}
 		st.LastWeekly = &cur

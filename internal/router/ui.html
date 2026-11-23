@@ -162,7 +162,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 "use strict";
 const API = "/v0/management/fefo";
 const KEY_STORE = "fefo-router:management-key";
-let key = "", status = null, cfgView = null, draft = null, dirty = false, timer = null;
+let key = "", status = null, cfgView = null, draft = null, dirty = false, timer = null, unknownSig = "";
+const openRows = new Set();
 const $ = (id) => document.getElementById(id);
 
 function el(tag, attrs, ...kids) {
@@ -283,7 +284,8 @@ function renderDecisions() {
   const ds = (status.recent_decisions || []).slice().reverse().filter((d) =>
     (!fc || d.client.toLowerCase().includes(fc)) && (!fa || (d.account || "").toLowerCase().includes(fa)) && (!fo || d.outcome === fo) && (!fr || d.role === fr));
   for (const d of ds) {
-    const det = el("details", {}, el("summary", {}, d.reason),
+    const rowKey = d.time + "|" + d.client + "|" + d.model;
+    const det = el("details", { open: openRows.has(rowKey), ontoggle: (e) => e.target.open ? openRows.add(rowKey) : openRows.delete(rowKey) }, el("summary", {}, d.reason),
       el("div", { class: "why" }, "policy: " + (d.policy || "")),
       el("ol", { class: "plan" }, ...(d.ranking || []).map((r) => el("li", { class: "why" }, r))),
       (d.excluded || []).length ? el("div", { class: "why err" }, "excluded: " + d.excluded.join(" · ")) : null);
@@ -333,7 +335,7 @@ function setPath(o, p, v) { const ks = p.split("."); let x = o; for (const k of 
 function markDirty() { dirty = true; $("rawJson").value = JSON.stringify(draft, null, 2); }
 
 function renderConfig(force) {
-  if (dirty && !force) return;
+  if (!force) return;
   draft = structuredClone(cfgView.effective);
   dirty = false;
   $("cfgSource").textContent = cfgView.source === "runtime" ? `runtime config (saved ${when(cfgView.overlay_at)}${cfgView.overlay_note ? " — " + cfgView.overlay_note : ""})` : "config.yaml";
@@ -348,7 +350,7 @@ function renderConfig(force) {
     inp.addEventListener("input", () => { setPath(draft, p, type === "checkbox" ? inp.checked : type === "number" ? parseFloat(inp.value) : inp.value); markDirty(); });
     g.append(el("div", {}, el("label", { title: help }, p), inp, el("div", { class: "meta" }, help)));
   }
-  renderBuckets(); renderClientsCfg(); renderUnknown();
+  renderBuckets(); renderClientsCfg(); unknownSig = ""; renderUnknown();
   $("rawJson").value = JSON.stringify(draft, null, 2);
 }
 function listEditor(values, onChange, suggestions) {
@@ -397,8 +399,11 @@ function renderClientsCfg() {
   box.append(clientCard("", draft.default_client, true));
 }
 function renderUnknown() {
-  const box = $("unknownKeys"); box.replaceChildren();
   const ks = status?.unknown_keys || [];
+  const sig = JSON.stringify(ks.map((k) => k.scope));
+  if (sig === unknownSig) return; // keep what the user is typing
+  unknownSig = sig;
+  const box = $("unknownKeys"); box.replaceChildren();
   if (!ks.length) box.append(el("div", { class: "meta" }, "None — every key seen belongs to a client."));
   for (const k of ks) {
     const inp = el("input", { list: "dl-clients", placeholder: "client name (new or existing)" });
@@ -413,14 +418,18 @@ function renderUnknown() {
 }
 $("addBucket").onclick = () => { const n = prompt("Bucket name"); if (n && !draft.buckets[n]) { draft.buckets[n] = []; markDirty(); renderBuckets(); renderClientsCfg(); } };
 $("addClient").onclick = () => { const n = prompt("Client name (e.g. machine name)"); if (n && !draft.clients[n]) { draft.clients[n] = { keys: [], buckets: [], on_exhausted: "any", borrow: true }; markDirty(); renderClientsCfg(); } };
-$("cfgSave").onclick = async () => {
-  try { cfgView = await api("/config", { config: draft, note: $("cfgNote").value }); dirty = false; renderConfig(true); toast("Runtime config saved and applied"); refresh(); }
-  catch (e) { $("cfgErr").textContent = e.message; toast("Not saved: " + e.message, true); }
-};
+async function saveConfig(doc, note) {
+  try { cfgView = await api("/config", { config: doc, note }); }
+  catch (e) {
+    if (!/save with force/.test(e.message) || !confirm(e.message + "\n\nSave anyway?")) { $("cfgErr").textContent = e.message; toast("Not saved", true); return; }
+    try { cfgView = await api("/config", { config: doc, note, force: true }); } catch (e2) { $("cfgErr").textContent = e2.message; toast("Not saved", true); return; }
+  }
+  dirty = false; renderConfig(true); toast("Runtime config saved and applied"); refresh();
+}
+$("cfgSave").onclick = () => saveConfig(draft, $("cfgNote").value);
 $("rawApply").onclick = async () => {
   let doc; try { doc = JSON.parse($("rawJson").value); } catch (e) { return toast("Invalid JSON: " + e.message, true); }
-  try { cfgView = await api("/config", { config: doc, note: $("cfgNote").value || "raw JSON edit" }); dirty = false; renderConfig(true); toast("Runtime config saved"); refresh(); }
-  catch (e) { $("cfgErr").textContent = e.message; toast("Not saved: " + e.message, true); }
+  await saveConfig(doc, $("cfgNote").value || "raw JSON edit");
 };
 $("cfgRevert").onclick = async () => {
   if (!confirm("Drop the runtime config and use config.yaml again?")) return;
@@ -434,7 +443,7 @@ async function refresh(withConfig) {
     status = await api("/status?decisions=200");
     if (withConfig || !cfgView) cfgView = await api("/config");
     $("meta").textContent = `${status.plugin} ${status.version} · ${status.mode} · config: ${status.config_source} · spare factor ${status.spare_factor} · history ${status.history} · ${status.session_bindings} sessions · ${new Date().toLocaleTimeString()}`;
-    renderOverview(); renderTraffic(); renderOverrides(); renderConfig(withConfig);
+    renderOverview(); renderTraffic(); renderOverrides(); renderConfig(!!withConfig); if (draft) renderUnknown();
   } catch (e) { if (e.message !== "unauthorized") toast("Refresh failed: " + e.message, true); }
 }
 function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => refresh(false), 5000); }

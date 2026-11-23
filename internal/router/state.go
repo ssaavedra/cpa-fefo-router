@@ -15,6 +15,9 @@ const (
 	externalClient   = "(external)"
 	anonymousClient  = "(anonymous)"
 	resetTolerance   = 10 * time.Minute
+	// attributionGap: usage between two readings further apart than this
+	// happened while CPA sent the account nothing, so it is not CPA's.
+	attributionGap = 10 * time.Minute
 )
 
 // accountInfo is what the host tells us about a credential.
@@ -76,8 +79,12 @@ type accountState struct {
 
 // hourBucket aggregates one account's usage within one clock hour.
 type hourBucket struct {
-	// Delta is the weekly-window share consumed in this hour (0..1 of a plan-week).
+	// Delta is the weekly-window share consumed in this hour by CPA traffic
+	// (0..1 of a plan-week), split between clients by tokens.
 	Delta float64 `json:"delta"`
+	// External is weekly-window share that accrued while CPA sent the account
+	// nothing (between readings more than attributionGap apart).
+	External float64 `json:"external,omitempty"`
 	// Tokens and Requests per client, used to split Delta between clients.
 	Tokens   map[string]int64 `json:"tokens,omitempty"`
 	Requests map[string]int   `json:"requests,omitempty"`
@@ -87,6 +94,9 @@ type hourBucket struct {
 // token-bearing requests is attributed to usage outside CPA.
 func (b *hourBucket) split() map[string]float64 {
 	out := map[string]float64{}
+	if b.External > 0 {
+		out[externalClient] += b.External
+	}
 	if b.Delta <= 0 {
 		return out
 	}

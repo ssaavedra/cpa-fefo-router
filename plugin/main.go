@@ -66,8 +66,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/ssaavedra/cpa-burndown-router/internal/router"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
+	"github.com/ssaavedra/cpa-fefo-router/internal/router"
 )
 
 var (

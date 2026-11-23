@@ -39,7 +39,7 @@ func (r *Router) Intercept(req pluginapi.RequestInterceptRequest) pluginapi.Requ
 		r.metrics.paced(client, g.Delay)
 		r.mu.Unlock()
 		if r.Config().LogDecisions && r.log != nil {
-			r.log("info", fmt.Sprintf("burndown pace client=%s %s +%s: %s", client, provider, g.Delay.Round(time.Millisecond), g.Reason),
+			r.log("info", fmt.Sprintf("fefo pace client=%s %s +%s: %s", client, provider, g.Delay.Round(time.Millisecond), g.Reason),
 				map[string]any{"client": client, "provider": provider, "delay_ms": g.Delay.Milliseconds(), "reason": g.Reason})
 		}
 		if g.Terminate {
@@ -63,7 +63,7 @@ func (r *Router) Intercept(req pluginapi.RequestInterceptRequest) pluginapi.Requ
 		"type": "error",
 		"error": map[string]any{
 			"type":    "rate_limit_error",
-			"message": fmt.Sprintf("burndown-router: %s; quota refills in %s", g.Reason, fmtDur(g.RetryAfter)),
+			"message": fmt.Sprintf("fefo-router: %s; quota refills in %s", g.Reason, fmtDur(g.RetryAfter)),
 		},
 	})
 	return pluginapi.RequestInterceptResponse{

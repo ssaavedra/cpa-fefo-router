@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ssaavedra/cpa-burndown-router/internal/quota"
+	"github.com/ssaavedra/cpa-fefo-router/internal/quota"
 )
 
 const (

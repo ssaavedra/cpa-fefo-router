@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
-	"github.com/ssaavedra/cpa-burndown-router/internal/quota"
+	"github.com/ssaavedra/cpa-fefo-router/internal/quota"
 )
 
 // LogFunc receives one structured diagnostic line.
@@ -40,8 +40,18 @@ type Router struct {
 	lister   AuthLister
 	sleep    func(time.Duration)
 
-	mu           sync.Mutex
-	cfg          Config
+	mu  sync.Mutex
+	cfg Config // effective: config.yaml, or the runtime overlay when set
+	// config.yaml section and the runtime overlay edited from the browser.
+	base        Config
+	baseRaw     string
+	overlay     string
+	overlayAt   time.Time
+	overlayNote string
+	overlayErr  string
+	// Caller scopes seen that map to no configured client.
+	unknownScopes map[string]time.Time
+
 	accounts     map[string]*accountState
 	hours        map[string]map[int64]*hourBucket
 	observeStart time.Time
@@ -89,7 +99,10 @@ func New(opts ...Option) *Router {
 		overrides: map[string]Override{},
 		bindings:  map[string]binding{},
 		metrics:   newMetrics(),
+
+		unknownScopes: map[string]time.Time{},
 	}
+	r.base = r.cfg
 	for _, opt := range opts {
 		opt(r)
 	}
@@ -109,12 +122,16 @@ func (r *Router) Config() Config {
 func (r *Router) SetConfig(cfg Config) {
 	r.mu.Lock()
 	changedInterval := r.cfg.RefreshInterval != cfg.RefreshInterval
+	r.base = cfg
 	r.cfg = cfg
 	load := cfg.StateFile != "" && r.loadedFrom != cfg.StateFile
 	r.mu.Unlock()
 	if load {
 		r.loadState(cfg.StateFile)
 	}
+	r.mu.Lock()
+	r.applyOverlayLocked()
+	r.mu.Unlock()
 	if changedInterval && r.refreshing() {
 		r.StopRefresher()
 		r.StartRefresher()
@@ -225,19 +242,30 @@ func (r *Router) clientForScopeLocked(scope string) string {
 	if scope == "" {
 		return anonymousClient
 	}
+	if alias, ok := r.lookupScopeLocked(scope); ok {
+		return alias
+	}
+	if len(r.unknownScopes) < 1000 {
+		r.unknownScopes[scope] = r.now()
+	}
+	return unknownAlias(scope)
+}
+
+// lookupScopeLocked finds the configured client of a caller scope.
+func (r *Router) lookupScopeLocked(scope string) (string, bool) {
 	for alias, c := range r.cfg.Clients {
 		for _, k := range c.Keys {
 			if k == scope {
-				return alias
+				return alias, true
 			}
 		}
 	}
 	if alias, ok := r.scopes[scope]; ok {
 		if _, still := r.cfg.Clients[alias]; still {
-			return alias
+			return alias, true
 		}
 	}
-	return unknownAlias(scope)
+	return "", false
 }
 
 func unknownAlias(scope string) string {
@@ -383,7 +411,7 @@ func (r *Router) StartRefresher() {
 		defer ticker.Stop()
 		for {
 			if err := r.Refresh(ctx); err != nil && r.log != nil && ctx.Err() == nil {
-				r.log("warn", "burndown-router refresh failed", map[string]any{"error": err.Error()})
+				r.log("warn", "fefo-router refresh failed", map[string]any{"error": err.Error()})
 			}
 			select {
 			case <-stop:

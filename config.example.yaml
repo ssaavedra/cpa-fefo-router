@@ -1,0 +1,65 @@
+# Example plugins section for CLIProxyAPI's config.yaml.
+# The library must be named fefo-router.so (.dylib/.dll) in plugins.dir.
+plugins:
+  enabled: true
+  dir: "plugins"
+  configs:
+    fefo-router:
+      enabled: true
+      priority: 10              # only the highest-priority scheduler plugin is used
+      mode: active              # active | observe (restart CPA after changing)
+      state_file: /CLIProxyAPI/config/fefo-router/state.json
+
+      # Lend an account's quota to other buckets while
+      #   remaining > spare_factor × (expected use by its home clients until it resets)
+      spare_factor: 1.5
+      min_spare: 0.03           # plan-weeks of spare needed before lending starts
+      min_history: 6h           # demand history needed before anything is lent
+      min_remaining: 0.01       # a window with less left blocks the account
+      session_ttl: 1h           # how long a (key, session) stays pinned to an account
+      probe_interval: 5m        # accounts without quota data get one request this often
+      stale_after: 30m          # limit flags without a reset time expire after this
+      allow_extra_usage: false  # never serve from paid overage
+      log_decisions: true
+
+      # Buckets: named groups of accounts (e-mail, auth file name or auth ID).
+      buckets:
+        work:     [me@work.example]
+        side:     [me@side.example]
+        personal: [me@personal.example]
+
+      # Plan size, if accounts differ (1 = one plan-week of quota).
+      capacity:
+        me@work.example: 1
+
+      # Clients: one or more API keys, an ordered list of buckets and what to do
+      # when none of their buckets (and no spare elsewhere) can serve them.
+      # Keys are caller scopes (scripts/client-scope.sh) or sha256(key).
+      clients:
+        laptop:
+          keys: ["<64-hex caller scope>"]
+          buckets: [work, side]
+          on_exhausted: any     # any | wait | fail
+        ci:
+          keys: ["<64-hex caller scope>"]
+          buckets: [personal]
+          on_exhausted: wait
+          borrow: true          # may use other buckets' spare (default true)
+
+      # Keys not listed above.
+      default_client:
+        buckets: []
+        on_exhausted: any
+
+      # Slow a client down when its last account would run out before a
+      # refill that is within `horizon`; at most `max_delay` per request.
+      pacing:
+        enabled: true
+        horizon: 2h
+        max_delay: 30s
+
+      # on_exhausted: wait — hold each request up to max_wait when the refill
+      # is within horizon, then answer 429 with Retry-After.
+      wait:
+        horizon: 2h
+        max_wait: 30s

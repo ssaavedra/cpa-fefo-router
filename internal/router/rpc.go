@@ -1,6 +1,7 @@
 package router
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,13 +14,19 @@ import (
 
 const (
 	// PluginName is also the expected library file name and config key.
-	PluginName = "burndown-router"
-	repository = "https://github.com/ssaavedra/cpa-burndown-router"
+	PluginName = "fefo-router"
+	repository = "https://github.com/ssaavedra/cpa-fefo-router"
 
-	pathStatus   = "/burndown/status"
-	pathMetrics  = "/burndown/metrics"
-	pathOverride = "/burndown/override"
+	pathStatus   = "/fefo/status"
+	pathMetrics  = "/fefo/metrics"
+	pathOverride = "/fefo/override"
+	pathConfig   = "/fefo/config"
+
+	pageCSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
 )
+
+//go:embed ui.html
+var uiPage []byte
 
 type lifecycleRequest struct {
 	ConfigYAML []byte `json:"config_yaml"`
@@ -41,7 +48,17 @@ type capabilities struct {
 }
 
 type managementRegistration struct {
-	Routes []pluginapi.ManagementRoute `json:"routes"`
+	Routes    []pluginapi.ManagementRoute `json:"routes"`
+	Resources []resourceRoute             `json:"resources"`
+}
+
+// resourceRoute is a page CPA serves under /v0/resource/plugins/<id>/<path>
+// and lists in the management panel's plugin menu. Resource requests are not
+// authenticated, so the page is static; it calls the authenticated routes.
+type resourceRoute struct {
+	Path        string `json:"Path"`
+	Menu        string `json:"Menu,omitempty"`
+	Description string `json:"Description,omitempty"`
 }
 
 // Handler dispatches host RPC methods to the router.
@@ -68,13 +85,13 @@ func (h *Handler) Handle(method string, request []byte) (out []byte) {
 
 func (h *Handler) failure(method string, err error) []byte {
 	if h.Router != nil && h.Router.log != nil {
-		h.Router.log("warn", "burndown-router call failed", map[string]any{"method": method, "error": err.Error()})
+		h.Router.log("warn", "fefo-router call failed", map[string]any{"method": method, "error": err.Error()})
 	}
 	switch method {
 	case pluginabi.MethodSchedulerPick:
 		raw, _ := okEnvelope(pluginapi.SchedulerPickResponse{})
 		return raw
-	case pluginabi.MethodRequestInterceptBefore:
+	case pluginabi.MethodRequestInterceptBefore, pluginabi.MethodRequestInterceptAfter:
 		raw, _ := okEnvelope(pluginapi.RequestInterceptResponse{})
 		return raw
 	}
@@ -95,7 +112,7 @@ func (h *Handler) dispatch(method string, request []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		h.Router.SetConfig(cfg)
+		h.Router.SetBaseConfig(req.ConfigYAML, cfg)
 		if h.OnConfigured != nil {
 			h.OnConfigured()
 		}
@@ -115,6 +132,9 @@ func (h *Handler) dispatch(method string, request []byte) ([]byte, error) {
 			return nil, fmt.Errorf("decode intercept: %w", err)
 		}
 		return okEnvelope(h.Router.Intercept(req))
+	case pluginabi.MethodRequestInterceptAfter:
+		// The capability covers both hooks; nothing to do after selection.
+		return okEnvelope(pluginapi.RequestInterceptResponse{})
 	case pluginabi.MethodUsageHandle:
 		var rec pluginapi.UsageRecord
 		if err := json.Unmarshal(request, &rec); err != nil {
@@ -123,11 +143,16 @@ func (h *Handler) dispatch(method string, request []byte) ([]byte, error) {
 		h.Router.ObserveUsage(rec)
 		return okEnvelope(struct{}{})
 	case pluginabi.MethodManagementRegister:
-		return okEnvelope(managementRegistration{Routes: []pluginapi.ManagementRoute{
-			{Method: http.MethodGet, Path: pathStatus, Description: "Burndown router status: accounts, spare, client plans, recent decisions. ?format=text for a table."},
-			{Method: http.MethodGet, Path: pathMetrics, Description: "Prometheus metrics."},
-			{Method: http.MethodPost, Path: pathOverride, Description: `Runtime override: {"client":"ssdevsys1","policy":"any","for":"2h"} or {"spare_factor":2} or {"client":"x","clear":true}.`},
-		}})
+		return okEnvelope(managementRegistration{
+			Routes: []pluginapi.ManagementRoute{
+				{Method: http.MethodGet, Path: pathStatus, Description: "FEFO router status: accounts, spare, client plans, traffic, recent decisions. ?format=text for a table."},
+				{Method: http.MethodGet, Path: pathMetrics, Description: "Prometheus metrics."},
+				{Method: http.MethodPost, Path: pathOverride, Description: `Temporary override: {"client":"c","policy":"any","for":"2h"}, {"spare_factor":2,"for":"1h"} or {"client":"c","clear":true}.`},
+				{Method: http.MethodGet, Path: pathConfig, Description: "Effective routing config, config.yaml section and runtime config."},
+				{Method: http.MethodPost, Path: pathConfig, Description: `Set runtime config: {"config":{...}}, {"yaml":"..."}, {"assign_key":{"scope":"…","client":"c"}} or {"revert":true}.`},
+			},
+			Resources: []resourceRoute{{Path: "ui", Menu: "FEFO Router", Description: "Where requests go and why; overrides and routing config."}},
+		})
 	case pluginabi.MethodManagementHandle:
 		var req pluginapi.ManagementRequest
 		if err := json.Unmarshal(request, &req); err != nil {
@@ -180,6 +205,25 @@ func (h *Handler) management(req pluginapi.ManagementRequest) pluginapi.Manageme
 		return pluginapi.ManagementResponse{StatusCode: code, Headers: jsonH, Body: body}
 	}
 	switch {
+	case strings.HasPrefix(path, "/v0/resource/plugins/"):
+		return pluginapi.ManagementResponse{StatusCode: 200, Headers: http.Header{
+			"Content-Type":            {"text/html; charset=utf-8"},
+			"Cache-Control":           {"no-store"},
+			"Content-Security-Policy": {pageCSP},
+			"Referrer-Policy":         {"no-referrer"},
+			"X-Content-Type-Options":  {"nosniff"},
+		}, Body: uiPage}
+	case strings.HasSuffix(path, pathConfig):
+		if method == http.MethodPost {
+			v, err := h.Router.UpdateConfig(req.Body)
+			if err != nil {
+				return errJSON(400, err.Error())
+			}
+			body, _ := json.Marshal(v)
+			return pluginapi.ManagementResponse{StatusCode: 200, Headers: jsonH, Body: body}
+		}
+		body, _ := json.Marshal(h.Router.ConfigView())
+		return pluginapi.ManagementResponse{StatusCode: 200, Headers: jsonH, Body: body}
 	case strings.HasSuffix(path, pathStatus):
 		n := 30
 		if v, err := strconv.Atoi(req.Query.Get("decisions")); err == nil && v >= 0 {

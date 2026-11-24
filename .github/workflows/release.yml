@@ -1,0 +1,25 @@
+# Tagged release: build against the latest CPA and attach the .so to the release.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re)build, e.g. v0.1.0
+        required: true
+      cpa_version:
+        description: CPA version ('latest' or e.g. v8.1.2)
+        default: latest
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ inputs.tag || github.ref_name }}
+      release_tag: ${{ inputs.tag || github.ref_name }}
+      cpa_version: ${{ inputs.cpa_version || 'latest' }}

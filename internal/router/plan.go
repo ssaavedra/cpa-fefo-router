@@ -33,18 +33,22 @@ type eval struct {
 	WeeklyReset     time.Time
 	ShortRemaining  float64 // 0..1 of the shortest window (5h)
 	ShortReset      time.Time
-	Capacity        float64
+	Capacity        capacityInfo // weekly window in API-equivalent dollars
 
 	Buckets []string
 	Home    []string // clients whose buckets include this account
 
-	// Expected usage by home clients (and outside CPA) until WeeklyReset, in
-	// plan-weeks. +Inf when it cannot be estimated yet.
+	// Expected dollars of use by home clients (and outside CPA) until
+	// WeeklyReset. +Inf when it cannot be estimated yet.
 	Expected float64
-	Spare    float64
+	// Spare dollars: remaining − factor × Expected.
+	Spare float64
 	// SpareWhy explains Expected/Spare for diagnostics.
 	SpareWhy string
 }
+
+// remaining is the dollars left in the weekly window.
+func (e *eval) remaining() float64 { return e.WeeklyRemaining * e.Capacity.USD }
 
 func (e *eval) hoursToReset(now time.Time) float64 {
 	if e.WeeklyReset.IsZero() {
@@ -74,7 +78,7 @@ type planContext struct {
 
 type rateInfo struct {
 	Known   bool
-	PerHour float64 // plan-weeks per hour, max of 24h and 7d averages
+	PerHour float64 // dollars per hour, max of 24h and 7d averages
 	Day     float64
 	Week    float64
 	Why     string
@@ -114,8 +118,19 @@ func (r *Router) newPlanContextLocked(provider string, now time.Time) *planConte
 	}
 	sort.Strings(ids)
 	pc.order = ids
+	type unit struct {
+		usd float64
+		why string
+	}
+	units := map[string]unit{}
 	for _, id := range ids {
-		pc.evals[id] = r.evaluateLocked(r.accounts[id], now)
+		st := r.accounts[id]
+		u, ok := units[st.Info.Provider]
+		if !ok {
+			u.usd, u.why = r.unitUSDLocked(st.Info.Provider)
+			units[st.Info.Provider] = u
+		}
+		pc.evals[id] = r.evaluateLocked(st, now, r.capacityLocked(st, u.usd, u.why))
 	}
 	for _, id := range ids {
 		pc.expected(pc.evals[id])
@@ -124,13 +139,13 @@ func (r *Router) newPlanContextLocked(provider string, now time.Time) *planConte
 }
 
 // evaluateLocked classifies one account from its snapshot and host state.
-func (r *Router) evaluateLocked(st *accountState, now time.Time) *eval {
+func (r *Router) evaluateLocked(st *accountState, now time.Time, capa capacityInfo) *eval {
 	cfg := r.cfg
 	e := &eval{
 		ID: st.Info.ID, Name: st.Info.display(), Provider: st.Info.Provider,
 		APIKey:          strings.EqualFold(st.Info.AuthKind, "apikey"),
 		WeeklyRemaining: 1, ShortRemaining: 1,
-		Capacity: cfg.capacityOf(st.Info),
+		Capacity: capa,
 		Buckets:  cfg.bucketsOf(st.Info),
 	}
 	for _, alias := range sortedKeys(cfg.Clients) {
@@ -213,7 +228,8 @@ func (r *Router) evaluateLocked(st *accountState, now time.Time) *eval {
 }
 
 // rate computes a client's (or the external pseudo-client's) consumption on
-// this provider's accounts in plan-weeks per hour. onlyAccount restricts it to
+// this provider's accounts in dollars per hour: its share of each hour's
+// weekly delta times the account's capacity. onlyAccount restricts it to
 // one account.
 func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 	key := client + "|" + onlyAccount
@@ -244,7 +260,7 @@ func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 			}
 			for h, b := range r.hours[id] {
 				if h >= from && h <= nowH {
-					total += b.split(home)[client] * e.Capacity
+					total += b.split(home)[client] * e.Capacity.USD
 				}
 			}
 		}
@@ -310,7 +326,7 @@ func (pc *planContext) expected(e *eval) {
 	total := ext.PerHour * hours
 	parts := []string{}
 	if total > 0 {
-		parts = append(parts, fmt.Sprintf("outside CPA %.2f", total))
+		parts = append(parts, fmt.Sprintf("outside CPA $%.2f", total))
 	}
 	for _, client := range e.Home {
 		cc := pc.r.clientConfigLocked(client)
@@ -329,25 +345,26 @@ func (pc *planContext) expected(e *eval) {
 			if !b.Usable || b.NoData {
 				continue
 			}
-			s := b.WeeklyRemaining * b.Capacity
+			s := b.remaining()
 			if !b.WeeklyReset.IsZero() && b.WeeklyReset.Before(e.WeeklyReset) {
-				s += b.Capacity // refills within this account's window
+				s += b.Capacity.USD // refills within this account's window
 			}
 			supply += s
 		}
 		reaching := math.Max(0, need-supply)
 		total += reaching
-		parts = append(parts, fmt.Sprintf("%s %.2f/h×%s→%.2f", client, d.PerHour, fmtDur(time.Duration(hours*float64(time.Hour))), reaching))
+		parts = append(parts, fmt.Sprintf("%s $%.2f/h×%s→$%.2f", client, d.PerHour, fmtDur(time.Duration(hours*float64(time.Hour))), reaching))
 	}
 	e.Expected = total
-	e.Spare = e.WeeklyRemaining*e.Capacity - pc.factor*total
-	e.SpareWhy = fmt.Sprintf("left %.2f − %.1f×expected %.2f", e.WeeklyRemaining*e.Capacity, pc.factor, total)
+	e.Spare = e.remaining() - pc.factor*total
+	e.SpareWhy = fmt.Sprintf("left $%.2f − %.1f×expected $%.2f", e.remaining(), pc.factor, total)
 	if len(parts) > 0 {
 		e.SpareWhy += " (" + strings.Join(parts, ", ") + ")"
 	}
 }
 
-// plan orders the accounts a client may use right now.
+// plan orders the accounts a client may use right now. minSpare is a share
+// of each account's capacity.
 func (pc *planContext) plan(client string, minSpare float64) ([]planEntry, Policy, string) {
 	r := pc.r
 	cc := r.clientConfigLocked(client)
@@ -397,7 +414,7 @@ func (pc *planContext) plan(client string, minSpare float64) ([]planEntry, Polic
 		if !isOwn[id] && !cc.BorrowEnabled() {
 			continue
 		}
-		if e.Spare > minSpare {
+		if e.Spare > minSpare*e.Capacity.USD {
 			spare = append(spare, e)
 		}
 	}
@@ -408,7 +425,7 @@ func (pc *planContext) plan(client string, minSpare float64) ([]planEntry, Polic
 			if isOwn[e.ID] {
 				whose = "own later bucket"
 			}
-			add(e, RoleSpareFirst, fmt.Sprintf("%s spare %.2f expires %s, before first own account", whose, e.Spare, fmtTime(e.WeeklyReset)))
+			add(e, RoleSpareFirst, fmt.Sprintf("%s spare $%.2f expires %s, before first own account", whose, e.Spare, fmtTime(e.WeeklyReset)))
 		}
 	}
 	for i, e := range own {
@@ -425,7 +442,7 @@ func (pc *planContext) plan(client string, minSpare float64) ([]planEntry, Polic
 		add(e, RoleOwn, why)
 	}
 	for _, e := range spare {
-		add(e, RoleSpare, fmt.Sprintf("spare %.2f, resets %s", e.Spare, fmtTime(e.WeeklyReset)))
+		add(e, RoleSpare, fmt.Sprintf("spare $%.2f, resets %s", e.Spare, fmtTime(e.WeeklyReset)))
 	}
 	if policy == PolicyAny {
 		var rest []*eval

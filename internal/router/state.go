@@ -95,6 +95,8 @@ type accountState struct {
 	LastWeekly *usedSample `json:"last_weekly,omitempty"`
 	// Recent readings of every window, for pacing.
 	Recent []usedSample `json:"recent,omitempty"`
+	// Learn measures the account's weekly capacity in dollars.
+	Learn capacityLearn `json:"capacity_learn"`
 }
 
 // hourBucket aggregates one account's usage within one clock hour.
@@ -113,7 +115,10 @@ type hourBucket struct {
 	// only for models missing from the price table.
 	USDLow  map[string]float64 `json:"usd_low,omitempty"`
 	USDHigh map[string]float64 `json:"usd_high,omitempty"`
-	// Tainted hours are left out of capacity learning.
+	// Cycle is the weekly reset the hour's readings belong to.
+	Cycle time.Time `json:"cycle,omitzero"`
+	// Tainted hours are left out of capacity learning: a request was priced
+	// as an unknown model, or the weekly window reset within the hour.
 	Tainted bool `json:"tainted,omitempty"`
 }
 

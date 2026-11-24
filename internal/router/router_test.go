@@ -456,7 +456,8 @@ func TestIdleGapUsageIsExternal(t *testing.T) {
 	pc := h.r.newPlanContextLocked("claude", h.now)
 	ext, conn := pc.rate(externalClient, acctP), pc.rate("connect", "")
 	h.r.mu.Unlock()
-	if ext.Day < 0.19/24 || conn.Day > 0.011/24+1e-9 || conn.Day <= 0 {
+	unit := DefaultConfig().DefaultUnitUSD // no capacity learned: the prior
+	if ext.Day < 0.19*unit/24 || conn.Day > 0.011*unit/24+1e-9 || conn.Day <= 0 {
 		t.Fatalf("external %+v connect %+v", ext, conn)
 	}
 }

@@ -72,8 +72,9 @@ type Config struct {
 	// SpareFactor k: an account lends quota while
 	// remaining > k * expected usage by its home clients until its reset.
 	SpareFactor float64 `yaml:"spare_factor" json:"spare_factor"`
-	// MinSpare is the spare (in account-weeks) needed to start lending, so
-	// rounding noise does not flip accounts in and out.
+	// MinSpare is the spare needed to start lending, as a share of the
+	// account's weekly capacity, so rounding noise does not flip accounts in
+	// and out.
 	MinSpare float64 `yaml:"min_spare" json:"min_spare"`
 	// MinRemaining blocks an account whose 5h or weekly window has less left.
 	MinRemaining float64 `yaml:"min_remaining" json:"min_remaining"`
@@ -98,8 +99,17 @@ type Config struct {
 	// Buckets map a bucket name to account identifiers: e-mail/label, auth
 	// file name or auth ID.
 	Buckets map[string][]string `yaml:"buckets" json:"buckets"`
-	// Capacity weights accounts with bigger plans (default 1 = one plan-week).
+	// Capacity is each account's plan size relative to a Pro plan (default
+	// 1). It is the prior for accounts whose dollar capacity is not learned yet.
 	Capacity map[string]float64 `yaml:"capacity" json:"capacity"`
+	// CapacityUSD pins an account's weekly capacity in API-equivalent dollars.
+	CapacityUSD map[string]float64 `yaml:"capacity_usd" json:"capacity_usd"`
+	// DefaultUnitUSD is the dollars per unit of Capacity before any account
+	// of the provider has learned its capacity.
+	DefaultUnitUSD float64 `yaml:"default_unit_usd" json:"default_unit_usd"`
+	// LearnMinDelta is the weekly share a cycle must have seen before its
+	// dollars-per-week estimate is used.
+	LearnMinDelta float64 `yaml:"learn_min_delta" json:"learn_min_delta"`
 	// Clients by alias.
 	Clients map[string]ClientConfig `yaml:"clients" json:"clients"`
 	// DefaultClient applies to keys not listed in Clients.
@@ -126,6 +136,8 @@ func DefaultConfig() Config {
 		SessionTTL:      time.Hour,
 		RefreshInterval: time.Minute,
 		LogDecisions:    true,
+		DefaultUnitUSD:  220,
+		LearnMinDelta:   0.05,
 		DefaultClient:   ClientConfig{OnExhausted: PolicyAny},
 		Pacing:          PacingConfig{Enabled: true, Horizon: 2 * time.Hour, MaxDelay: 30 * time.Second},
 		Wait:            WaitConfig{Horizon: 2 * time.Hour, MaxWait: 30 * time.Second},
@@ -148,6 +160,9 @@ type rawConfig struct {
 	LogDecisions    *bool                   `yaml:"log_decisions"`
 	Buckets         map[string][]string     `yaml:"buckets"`
 	Capacity        map[string]float64      `yaml:"capacity"`
+	CapacityUSD     map[string]float64      `yaml:"capacity_usd"`
+	DefaultUnitUSD  *float64                `yaml:"default_unit_usd"`
+	LearnMinDelta   *float64                `yaml:"learn_min_delta"`
 	Clients         map[string]ClientConfig `yaml:"clients"`
 	DefaultClient   *ClientConfig           `yaml:"default_client"`
 	Pacing          *struct {
@@ -252,6 +267,28 @@ func ParseConfig(raw []byte) (Config, error) {
 		}
 		cfg.Capacity[strings.ToLower(strings.TrimSpace(k))] = v
 	}
+	cfg.CapacityUSD = map[string]float64{}
+	for k, v := range rc.CapacityUSD {
+		if v <= 0 {
+			errs = append(errs, fmt.Sprintf("capacity_usd.%s: must be > 0", k))
+			continue
+		}
+		cfg.CapacityUSD[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+	if rc.DefaultUnitUSD != nil {
+		if *rc.DefaultUnitUSD <= 0 {
+			errs = append(errs, "default_unit_usd: must be > 0")
+		} else {
+			cfg.DefaultUnitUSD = *rc.DefaultUnitUSD
+		}
+	}
+	if rc.LearnMinDelta != nil {
+		if *rc.LearnMinDelta <= 0 || *rc.LearnMinDelta > 1 {
+			errs = append(errs, "learn_min_delta: must be in (0, 1]")
+		} else {
+			cfg.LearnMinDelta = *rc.LearnMinDelta
+		}
+	}
 	checkClient := func(name string, c ClientConfig) ClientConfig {
 		if c.OnExhausted == "" {
 			c.OnExhausted = PolicyAny
@@ -299,6 +336,16 @@ func (c Config) bucketsOf(a accountInfo) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// capacityUSDOf returns an account's pinned dollar capacity.
+func (c Config) capacityUSDOf(a accountInfo) (float64, bool) {
+	for k, v := range c.CapacityUSD {
+		if a.matches(k) {
+			return v, true
+		}
+	}
+	return 0, false
 }
 
 // capacityOf returns an account's plan weight.

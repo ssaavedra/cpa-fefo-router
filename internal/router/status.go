@@ -26,11 +26,16 @@ type AccountView struct {
 	WeeklyReset     time.Time `json:"weekly_reset,omitzero"`
 	ShortRemaining  float64   `json:"short_remaining"`
 	ShortReset      time.Time `json:"short_reset,omitzero"`
-	Capacity        float64   `json:"capacity"`
-	Expected        *float64  `json:"expected_home_usage,omitempty"`
-	Spare           *float64  `json:"spare,omitempty"`
-	SpareWhy        string    `json:"spare_why,omitempty"`
-	DataAge         string    `json:"data_age,omitempty"`
+	// Dollar figures are API-equivalent USD.
+	CapacityUSD    float64       `json:"capacity_usd"`
+	CapacitySource string        `json:"capacity_source"`
+	CapacityWhy    string        `json:"capacity_why,omitempty"`
+	CapacityLearn  capacityLearn `json:"capacity_learn"`
+	RemainingUSD   float64       `json:"remaining_usd"`
+	ExpectedUSD    *float64      `json:"expected_usd,omitempty"`
+	SpareUSD       *float64      `json:"spare_usd,omitempty"`
+	SpareWhy       string        `json:"spare_why,omitempty"`
+	DataAge        string        `json:"data_age,omitempty"`
 }
 
 // ClientView is one client in the status report.
@@ -195,11 +200,12 @@ func (r *Router) Status(decisions int) Status {
 				Usable: e.Usable, Blocked: e.Block, NoData: e.NoData,
 				WeeklyRemaining: e.WeeklyRemaining, WeeklyReset: e.WeeklyReset,
 				ShortRemaining: e.ShortRemaining, ShortReset: e.ShortReset,
-				Capacity: e.Capacity, SpareWhy: e.SpareWhy,
+				CapacityUSD: e.Capacity.USD, CapacitySource: e.Capacity.Source, CapacityWhy: e.Capacity.Why,
+				CapacityLearn: r.accounts[id].Learn, RemainingUSD: e.remaining(), SpareWhy: e.SpareWhy,
 			}
 			if !math.IsInf(e.Expected, 0) {
 				x, s := e.Expected, e.Spare
-				av.Expected, av.Spare = &x, &s
+				av.ExpectedUSD, av.SpareUSD = &x, &s
 			}
 			if a := r.accounts[id]; a.HasSnapshot {
 				av.DataAge = fmtDur(now.Sub(a.Snapshot.ObservedAt))
@@ -273,7 +279,7 @@ func (s Status) Text() string {
 	}
 	b.WriteString("\nACCOUNTS\n")
 	tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "  account\tprovider\tbuckets\tweekly\tresets\t5h\tstate\texpected\tspare\tdata age")
+	fmt.Fprintln(tw, "  account\tprovider\tbuckets\tweekly\tresets\t5h\tstate\tcapacity\tremaining\texpected\tspare\tdata age")
 	for _, a := range s.Accounts {
 		state := "usable"
 		if !a.Usable {
@@ -282,8 +288,8 @@ func (s Status) Text() string {
 			state = "usable (no data)"
 		}
 		exp, spare := "?", "?"
-		if a.Expected != nil {
-			exp, spare = fmt.Sprintf("%.2f", *a.Expected), fmt.Sprintf("%+.2f", *a.Spare)
+		if a.ExpectedUSD != nil {
+			exp, spare = fmt.Sprintf("$%.2f", *a.ExpectedUSD), fmt.Sprintf("%+.2f", *a.SpareUSD)
 		}
 		resets := "?"
 		if !a.WeeklyReset.IsZero() {
@@ -292,11 +298,12 @@ func (s Status) Text() string {
 				resets = fmtTime(a.WeeklyReset) + " (" + fmtDur(a.WeeklyReset.Sub(s.Now)) + ")"
 			}
 		}
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%.0f%%\t%s\t%.0f%%\t%s\t%s\t%s\t%s\n", a.Account, a.Provider, strings.Join(a.Buckets, ","),
-			a.WeeklyRemaining*100, resets, a.ShortRemaining*100, state, exp, spare, a.DataAge)
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%.0f%%\t%s\t%.0f%%\t%s\t$%.2f\t$%.2f\t%s\t%s\t%s\n", a.Account, a.Provider, strings.Join(a.Buckets, ","),
+			a.WeeklyRemaining*100, resets, a.ShortRemaining*100, state, a.CapacityUSD, a.RemainingUSD, exp, spare, a.DataAge)
 	}
 	tw.Flush()
 	for _, a := range s.Accounts {
+		fmt.Fprintf(&b, "  · %s: capacity $%.2f/week, %s (%s)\n", a.Account, a.CapacityUSD, a.CapacitySource, a.CapacityWhy)
 		if a.SpareWhy != "" {
 			fmt.Fprintf(&b, "  · %s: %s\n", a.Account, a.SpareWhy)
 		}
@@ -308,7 +315,7 @@ func (s Status) Text() string {
 			d := c.Demand[p]
 			dem := "demand unknown: " + d.Why
 			if d.Known {
-				dem = fmt.Sprintf("demand %.4f plan-weeks/h (24h %.4f, 7d %.4f)", d.PerHour, d.Day, d.Week)
+				dem = fmt.Sprintf("demand $%.2f/h (24h $%.2f, 7d $%.2f)", d.PerHour, d.Day, d.Week)
 			}
 			fmt.Fprintf(&b, "    %s: %s\n", p, dem)
 			for i, e := range c.Plans[p] {

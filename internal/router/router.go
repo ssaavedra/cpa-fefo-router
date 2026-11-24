@@ -171,6 +171,7 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 	if usage != (pricing.Usage{}) {
 		cost = r.prices.Cost(model, usage)
 	}
+	r.foldLocked(authID, at)
 	b := r.bucketLocked(authID, at)
 	if !rec.Failed {
 		addTo(&b.Requests, client, 1)
@@ -211,6 +212,15 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 		st.Recent = st.Recent[1:]
 	}
 	if w, ok := weeklyWindow(snap); ok {
+		switch {
+		case b.Cycle.IsZero():
+			b.Cycle = w.ResetAt
+		case !sameReset(b.Cycle, w.ResetAt):
+			b.Tainted = true
+			if w.ResetAt.After(b.Cycle) {
+				b.Cycle = w.ResetAt
+			}
+		}
 		used := 1 - w.Remaining
 		cur := usedSample{At: at, Window: w.Name, Used: used, Reset: w.ResetAt}
 		if prev := st.LastWeekly; prev != nil {
@@ -375,6 +385,9 @@ func (r *Router) Refresh(ctx context.Context) error {
 		r.mu.Unlock()
 	}
 	r.mu.Lock()
+	for id := range r.accounts {
+		r.foldLocked(id, now)
+	}
 	r.pruneLocked(now)
 	r.mu.Unlock()
 	r.saveState()

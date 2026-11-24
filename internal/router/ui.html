@@ -181,6 +181,7 @@ function el(tag, attrs, ...kids) {
 }
 function toast(msg, bad) { const t = $("toast"); t.textContent = msg; t.style.color = bad ? "var(--bad)" : ""; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500); }
 function pct(x) { return (x * 100).toFixed(0) + "%"; }
+function usd(x) { return "$" + (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2)); }
 function until(t) {
   if (!t) return "?";
   let s = (new Date(t) - Date.now()) / 1000;
@@ -267,8 +268,10 @@ function renderOverview() {
       el("div", { class: "meta" }, `5h ${pct(x.short_remaining)} left · resets in ${until(x.short_reset)}`), bar(x.short_remaining),
       el("dl", { class: "kv" },
         el("dt", {}, "home clients"), el("dd", {}, (x.home_clients || []).join(", ") || "none (shared pool)"),
-        el("dt", {}, "expected use"), el("dd", {}, x.expected_home_usage == null ? "unknown yet" : x.expected_home_usage.toFixed(2) + " plan-weeks"),
-        el("dt", {}, "spare"), el("dd", {}, x.spare == null ? "unknown yet" : (x.spare > 0 ? "+" : "") + x.spare.toFixed(2)),
+        el("dt", {}, "capacity"), el("dd", { title: x.capacity_why || "" }, usd(x.capacity_usd) + "/week · " + x.capacity_source),
+        el("dt", {}, "remaining"), el("dd", {}, usd(x.remaining_usd)),
+        el("dt", {}, "expected use"), el("dd", {}, x.expected_usd == null ? "unknown yet" : usd(x.expected_usd)),
+        el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + usd(x.spare_usd)),
         el("dt", {}, "data age"), el("dd", {}, x.data_age || "—")),
       x.blocked ? el("div", { class: "why err" }, x.blocked) : null,
       x.spare_why ? el("div", { class: "why" }, x.spare_why) : null));
@@ -278,7 +281,7 @@ function renderOverview() {
     const body = [];
     for (const p of Object.keys(x.plans || {}).sort()) {
       const d = x.demand[p] || {};
-      body.push(el("div", { class: "meta" }, p + ": " + (d.Known ? `demand ${d.PerHour.toFixed(4)} plan-weeks/h (24h ${d.Day.toFixed(4)}, 7d ${d.Week.toFixed(4)})` : "demand unknown — " + (d.Why || ""))));
+      body.push(el("div", { class: "meta" }, p + ": " + (d.Known ? `demand ${usd(d.PerHour)}/h (24h ${usd(d.Day)}, 7d ${usd(d.Week)})` : "demand unknown — " + (d.Why || ""))));
       const ol = el("ol", { class: "plan" });
       for (const e of x.plans[p]) ol.append(el("li", {}, el("span", { class: "chip " + e.role }, e.role), " ", providerIcon(p), " ", el("strong", {}, e.account), el("div", { class: "why" }, e.why)));
       if (!x.plans[p].length) ol.append(el("li", { class: "err" }, "no usable account"));
@@ -346,7 +349,8 @@ $("ovApply").onclick = async () => {
 
 // --- config -------------------------------------------------------------
 const GLOBALS = [
-  ["spare_factor", "number", "Lend while remaining > factor × expected"], ["min_spare", "number", "Spare needed to start lending"],
+  ["spare_factor", "number", "Lend while remaining > factor × expected"], ["min_spare", "number", "Spare needed to start lending, share of the account's week"],
+  ["default_unit_usd", "number", "$ per unit of capacity before any account is learned"], ["learn_min_delta", "number", "Weekly share seen before a capacity estimate is used"],
   ["min_remaining", "number", "Block a window below this share"], ["min_history", "text", "History before lending"],
   ["session_ttl", "text", "Session pin lifetime"], ["probe_interval", "text", "Probe accounts without data"],
   ["stale_after", "text", "Limit flags expire after"], ["allow_extra_usage", "checkbox", "Allow paid extra usage"],

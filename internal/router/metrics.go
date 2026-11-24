@@ -107,12 +107,18 @@ func (r *Router) Prometheus() string {
 			fmt.Fprintf(&b, "fefo_account_weekly_reset_seconds%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider), num(x.e.WeeklyReset.Sub(now).Seconds()))
 		}
 	}
-	gauge("fefo_account_expected_home_usage", "Expected use by home clients until the weekly reset, in plan-weeks.")
-	gauge("fefo_account_spare", "Lendable quota in plan-weeks (remaining − spare_factor × expected).")
+	gauge("fefo_account_capacity_usd", "Weekly capacity in API-equivalent USD.")
+	for _, x := range rows {
+		fmt.Fprintf(&b, "fefo_account_capacity_usd%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "source", x.e.Capacity.Source), num(x.e.Capacity.USD))
+	}
+	gauge("fefo_account_remaining_usd", "API-equivalent USD left in the weekly window.")
+	gauge("fefo_account_expected_usd", "Expected use by home clients until the weekly reset, in API-equivalent USD.")
+	gauge("fefo_account_spare_usd", "Lendable quota in API-equivalent USD (remaining − spare_factor × expected).")
 	for _, x := range rows {
 		l := lbl("account", x.e.Name, "provider", x.e.Provider)
-		fmt.Fprintf(&b, "fefo_account_expected_home_usage%s %s\n", l, num(x.e.Expected))
-		fmt.Fprintf(&b, "fefo_account_spare%s %s\n", l, num(x.e.Spare))
+		fmt.Fprintf(&b, "fefo_account_remaining_usd%s %s\n", l, num(x.e.remaining()))
+		fmt.Fprintf(&b, "fefo_account_expected_usd%s %s\n", l, num(x.e.Expected))
+		fmt.Fprintf(&b, "fefo_account_spare_usd%s %s\n", l, num(x.e.Spare))
 	}
 	gauge("fefo_account_usable", "1 when the account can take traffic.")
 	for _, x := range rows {
@@ -122,7 +128,7 @@ func (r *Router) Prometheus() string {
 		}
 		fmt.Fprintf(&b, "fefo_account_usable%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "reason", x.e.Block), num(v))
 	}
-	gauge("fefo_client_demand_per_hour", "Client consumption in plan-weeks per hour.")
+	gauge("fefo_client_demand_per_hour", "Client consumption in API-equivalent USD per hour.")
 	for _, p := range sortedKeys(providers) {
 		pc := r.newPlanContextLocked(p, now)
 		clients := append(sortedKeys(r.cfg.Clients), externalClient)

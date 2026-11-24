@@ -169,7 +169,7 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 			// Spare hysteresis first: a borrowed account keeps its sessions while
 			// spare > 0, even if it dropped below min_spare for new ones.
 			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 && !contains(r.ownIDsLocked(pc, client), b.AuthID) {
-				return choose(b.AuthID, RoleSpare, fmt.Sprintf("pinned: spare %.2f still above 0", e.Spare))
+				return choose(b.AuthID, RoleSpare, fmt.Sprintf("pinned: spare $%.2f still above 0", e.Spare))
 			}
 			for _, p := range order {
 				if p.ID == b.AuthID && (p.Role != RoleLastResort || !betterThanLastResort) {

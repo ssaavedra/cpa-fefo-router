@@ -21,6 +21,9 @@ type ConfigDoc struct {
 	LogDecisions    bool                 `json:"log_decisions"`
 	Buckets         map[string][]string  `json:"buckets"`
 	Capacity        map[string]float64   `json:"capacity"`
+	CapacityUSD     map[string]float64   `json:"capacity_usd"`
+	DefaultUnitUSD  float64              `json:"default_unit_usd"`
+	LearnMinDelta   float64              `json:"learn_min_delta"`
 	Clients         map[string]ClientDoc `json:"clients"`
 	DefaultClient   ClientDoc            `json:"default_client"`
 	Pacing          struct {
@@ -65,7 +68,8 @@ func (c Config) Doc() ConfigDoc {
 		SpareFactor: c.SpareFactor, MinSpare: c.MinSpare, MinRemaining: c.MinRemaining,
 		MinHistory: durStr(c.MinHistory), StaleAfter: durStr(c.StaleAfter), ProbeInterval: durStr(c.ProbeInterval),
 		SessionTTL: durStr(c.SessionTTL), AllowExtraUsage: c.AllowExtraUsage, LogDecisions: c.LogDecisions,
-		Buckets: map[string][]string{}, Capacity: map[string]float64{}, Clients: map[string]ClientDoc{},
+		Buckets: map[string][]string{}, Capacity: map[string]float64{}, CapacityUSD: map[string]float64{}, Clients: map[string]ClientDoc{},
+		DefaultUnitUSD: c.DefaultUnitUSD, LearnMinDelta: c.LearnMinDelta,
 		DefaultClient: clientDoc(c.DefaultClient),
 	}
 	for k, v := range c.Buckets {
@@ -73,6 +77,9 @@ func (c Config) Doc() ConfigDoc {
 	}
 	for k, v := range c.Capacity {
 		d.Capacity[k] = v
+	}
+	for k, v := range c.CapacityUSD {
+		d.CapacityUSD[k] = v
 	}
 	for k, v := range c.Clients {
 		d.Clients[k] = clientDoc(v)

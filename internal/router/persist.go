@@ -62,6 +62,9 @@ func (r *Router) loadState(path string) {
 			if cur.LastWeekly == nil {
 				cur.LastWeekly = st.LastWeekly
 			}
+			if cur.Learn.Folded == 0 {
+				cur.Learn = st.Learn
+			}
 			continue
 		}
 		st.Info.ID = id

@@ -38,7 +38,7 @@ func (r *Router) pollUsage(ctx context.Context, now time.Time) {
 				strings.EqualFold(st.Info.AuthKind, "apikey") || now.Before(st.Usage.NextAt) {
 				continue
 			}
-			st.Usage.NextAt = now.Add(interval)
+			st.Usage.NextAt = now.Add(jittered(interval, r.jitter()))
 			jobs = append(jobs, job{id, st.Info.AuthIndex})
 		}
 	}
@@ -160,4 +160,13 @@ func (r *Router) usageViewLocked(st *accountState, capacityUSD float64, now time
 		}
 	}
 	return v
+}
+
+// usagePollJitter spreads each account's polls by up to ±30 % of the interval,
+// so polls do not arrive at Anthropic in lockstep while the mean gap stays
+// at the configured interval.
+const usagePollJitter = 0.3
+
+func jittered(interval time.Duration, u float64) time.Duration {
+	return time.Duration(float64(interval) * (1 + usagePollJitter*(2*u-1)))
 }

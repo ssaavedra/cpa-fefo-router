@@ -78,7 +78,7 @@ Usage from outside CPA, hours with unpriced models and hours in which the weekly
 
 ### Fable protection
 
-Anthropic limits some model families (today Fable) with a separate weekly allowance that is a share of the weekly window, and bills them as paid **extra usage** when the plan has no allowance (Pro) or once it is used up. Response headers do not carry these limits, so the refresher polls each Claude OAuth account's usage report (`GET https://api.anthropic.com/api/oauth/usage`) every `usage_poll_interval` (5m) through CPA (`host.auth.get` for the access token, `host.http.do` for the request). The token is only put in that request's header: it is never logged, stored or shown, and errors are scrubbed of it.
+Anthropic limits some model families (today Fable) with a separate weekly allowance that is a share of the weekly window, and bills them as paid **extra usage** when the plan has no allowance (Pro) or once it is used up. Response headers do not carry these limits, so the refresher polls each Claude OAuth account's usage report (`GET https://api.anthropic.com/api/oauth/usage`) every `usage_poll_interval` (5m, each account's next poll jittered by ±30 % so they do not arrive together) through CPA (`host.auth.get` for the access token, `host.http.do` for the request). The token is only put in that request's header: it is never logged, stored or shown, and errors are scrubbed of it.
 
 For a request of such a family (the model's family from the price table, so a new `claude-fable-6` counts):
 
@@ -164,7 +164,7 @@ See [`config.example.yaml`](config.example.yaml); every key is optional.
 | `stale_after` | `30m` | Lifetime of limit flags that carry no reset time. |
 | `allow_extra_usage` | `false` | Allow exhausted accounts that still serve from paid overage, and lift the Fable protection. |
 | `scoped_families` | `[fable]` | Model families with their own allowance, kept off plans without one while extra usage is on. |
-| `usage_poll_interval` | `5m` | How often each Claude account's usage report is fetched; `0` disables (and with it the no-allowance check). |
+| `usage_poll_interval` | `5m` | How often each Claude account's usage report is fetched, ±30 % jitter per poll (checked on each `refresh_interval` tick); `0` disables (and with it the no-allowance check). |
 | `buckets` | — | `name: [account, …]`; accounts by e-mail, auth file name or auth ID. |
 | `capacity` | `1` each | Relative plan size per account (Pro = 1): the capacity prior until dollars are learned. |
 | `capacity_usd` | learned | Pin an account's weekly capacity in API-equivalent dollars. |

@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"sync"
@@ -41,6 +42,8 @@ type Router struct {
 	log      LogFunc
 	lister   AuthLister
 	sleep    func(time.Duration)
+	// jitter returns a uniform draw in [0, 1); it spreads usage polls.
+	jitter func() float64
 
 	mu  sync.Mutex
 	cfg Config // effective: config.yaml, or the runtime overlay when set
@@ -89,6 +92,9 @@ func WithClock(now func() time.Time) Option { return func(r *Router) { r.now = n
 // WithSleep overrides time.Sleep, for tests.
 func WithSleep(sleep func(time.Duration)) Option { return func(r *Router) { r.sleep = sleep } }
 
+// WithJitter replaces the random source for poll jitter (tests).
+func WithJitter(f func() float64) Option { return func(r *Router) { r.jitter = f } }
+
 // WithLogger sets the diagnostic sink.
 func WithLogger(log LogFunc) Option { return func(r *Router) { r.log = log } }
 
@@ -111,6 +117,7 @@ func New(opts ...Option) *Router {
 		registry:  quota.DefaultRegistry(),
 		now:       time.Now,
 		sleep:     time.Sleep,
+		jitter:    rand.Float64,
 		cfg:       DefaultConfig(),
 		accounts:  map[string]*accountState{},
 		hours:     map[string]map[int64]*hourBucket{},

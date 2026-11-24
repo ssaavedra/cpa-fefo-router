@@ -46,6 +46,7 @@ func pollingHarness(t *testing.T, extra string, reports map[string]string) (*har
 		logs = append(logs, level+" "+msg+" "+string(raw))
 	}
 	h.r.fetcher = host
+	h.r.jitter = func() float64 { return 0.5 }
 	return h, host, &logs
 }
 
@@ -121,5 +122,33 @@ func TestUsagePollerReadsReportsAndNeverLeaksTheToken(t *testing.T) {
 				t.Fatalf("%s leaks a credential:\n%s", name, text)
 			}
 		}
+	}
+}
+
+func TestUsagePollsAreJitteredWithinThirtyPercent(t *testing.T) {
+	for _, tc := range []struct {
+		draw          float64
+		early, onTime time.Duration
+	}{
+		{0, 3*time.Minute + 29*time.Second, 3*time.Minute + 30*time.Second},
+		{0.5, 4*time.Minute + 59*time.Second, 5 * time.Minute},
+		{0.9999999, 6*time.Minute + 29*time.Second, 6*time.Minute + 30*time.Second},
+	} {
+		t.Run(fmt.Sprint(tc.draw), func(t *testing.T) {
+			h, host, _ := pollingHarness(t, "pricing: {sync: false}\nusage_poll_interval: 5m", map[string]string{})
+			h.r.jitter = func() float64 { return tc.draw }
+			h.refresh()
+			first := len(host.sent(claudeUsageURL))
+			h.advance(tc.early)
+			h.refresh()
+			if n := len(host.sent(claudeUsageURL)); n != first {
+				t.Fatalf("polled again after %s with draw %v", tc.early, tc.draw)
+			}
+			h.advance(tc.onTime - tc.early)
+			h.refresh()
+			if n := len(host.sent(claudeUsageURL)); n != 2*first {
+				t.Fatalf("not polled again after %s with draw %v (%d requests, want %d)", tc.onTime, tc.draw, n, 2*first)
+			}
+		})
 	}
 }

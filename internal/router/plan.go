@@ -237,10 +237,14 @@ func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 			if onlyAccount != "" && id != onlyAccount {
 				continue
 			}
-			capa := pc.evals[id].Capacity
+			e := pc.evals[id]
+			home := map[string]bool{}
+			for _, c := range e.Home {
+				home[c] = true
+			}
 			for h, b := range r.hours[id] {
 				if h >= from && h <= nowH {
-					total += b.split()[client] * capa
+					total += b.split(home)[client] * e.Capacity
 				}
 			}
 		}

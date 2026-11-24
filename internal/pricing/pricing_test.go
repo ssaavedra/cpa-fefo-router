@@ -47,9 +47,9 @@ func TestCost(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, m := tab.Cost(tc.model, tc.usage)
-			if !near(got, tc.want) || m != Exact {
-				t.Errorf("Cost = %v (%s), want %v (exact)", got, m, tc.want)
+			q := tab.Cost(tc.model, tc.usage)
+			if !near(q.Low, tc.want) || q.Low != q.High || q.Match != Exact {
+				t.Errorf("Cost = %+v, want %v (exact, Low == High)", q, tc.want)
 			}
 		})
 	}
@@ -57,7 +57,7 @@ func TestCost(t *testing.T) {
 
 func TestCostCodexCachedSubsetOfInput(t *testing.T) {
 	u := NormalizeUsage("codex", pluginapi.UsageDetail{InputTokens: 10000, CachedTokens: 8000, OutputTokens: 100, ReasoningTokens: 40})
-	got, _ := testTable().Cost("gpt-6.1-terra", u)
+	got := testTable().Cost("gpt-6.1-terra", u).High
 	want := (2000*1 + 8000*0.05 + 100*5) / 1e6
 	if !near(got, want) {
 		t.Errorf("Cost = %v, want %v", got, want)
@@ -134,46 +134,68 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-func TestUnknownModelIsProtective(t *testing.T) {
+func TestUnknownModelQuotesFamilyInterval(t *testing.T) {
 	tab := testTable()
+	tab.Models["claude-fable-5-1"] = Price{Rates: r(6, 30, 0.1, 7.5), Family: "claude-fable"}
 	big := Usage{Uncached: 500000, Output: 1000, CacheRead: 1000, CacheWrite: 1000}
 	small := Usage{Uncached: 1000, Output: 1000, CacheRead: 1000, CacheWrite: 1000}
 	tests := []struct {
-		unknown string
-		fam     string
+		unknown    string
+		wantFamily string
+		members    []string
 	}{
-		{"claude-brand-new-9", "claude-"},
-		{"gpt-99", "gpt-"},
-		{"o11-pro", "gpt-"},
-		{"codex-whatever", "gpt-"},
-		{"mystery-model", ""},
+		{"claude-fable-6", "claude-fable", []string{"claude-fable-5-2", "claude-fable-5-1"}},
+		{"claude-fable-6-20260101-thinking", "claude-fable", []string{"claude-fable-5-2", "claude-fable-5-1"}},
+		{"gpt-7.2-terra", "gpt-terra", []string{"gpt-6.1-terra"}},
+		{"claude-brand-new-9", "claude", []string{"claude-opus-5-5", "claude-fable-5-2", "claude-fable-5-1", "claude-sonnet-5-1"}},
+		{"codex-whatever", "gpt", []string{"gpt-6.1-terra", "gpt-6", "o9"}},
+		{"mystery-model", "", []string{"claude-opus-5-5", "claude-fable-5-2", "claude-fable-5-1", "claude-sonnet-5-1", "gpt-6.1-terra", "gpt-6", "o9"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.unknown, func(t *testing.T) {
 			for _, u := range []Usage{small, big} {
-				got, m := tab.Cost(tc.unknown, u)
-				if m != Unknown || got <= 0 {
-					t.Fatalf("Cost = %v (%s), want positive unknown", got, m)
+				q := tab.Cost(tc.unknown, u)
+				if q.Match != Unknown || q.Family != tc.wantFamily {
+					t.Fatalf("quote = %+v, want unknown in family %q", q, tc.wantFamily)
 				}
-				for id := range tab.Models {
-					if tc.fam != "" && family(id) != family(tc.unknown) {
-						continue
-					}
-					if known, _ := tab.Cost(id, u); got < known-1e-12 {
-						t.Errorf("unknown %.6f < known %s %.6f", got, id, known)
+				if q.Low <= 0 || q.Low > q.High {
+					t.Fatalf("interval [%v, %v] must be positive and ordered", q.Low, q.High)
+				}
+				for _, id := range tc.members {
+					k := tab.Cost(id, u).High
+					if k > q.High+1e-12 {
+						t.Errorf("member %s costs %v, above High %v", id, k, q.High)
 					}
 				}
 			}
 		})
 	}
-	if got, m := (Table{}).Cost("anything", small); got <= 0 || m != Unknown {
-		t.Errorf("empty table Cost = %v (%s), want positive unknown", got, m)
-	}
+
+	t.Run("fable range excludes opus and sonnet", func(t *testing.T) {
+		q := tab.Cost("claude-fable-6", small)
+		opus := tab.Cost("claude-opus-5-5", small).High
+		if q.Low <= opus {
+			t.Errorf("Low %v should exceed Opus %v: fable range is not the claude-wide range", q.Low, opus)
+		}
+	})
+	t.Run("zero minimum component takes the family max", func(t *testing.T) {
+		tab.Models["claude-zeta-1"] = Price{Rates: r(1, 2, 0, 0)}
+		tab.Models["claude-zeta-2"] = Price{Rates: r(2, 4, 0.1, 1)}
+		q := tab.Cost("claude-zeta-3", Usage{CacheRead: 1000000})
+		if q.Family != "claude-zeta" || !near(q.Low, 0.1) || !near(q.High, 0.1) {
+			t.Errorf("quote = %+v, want 0.1 on both ends", q)
+		}
+	})
+	t.Run("empty table is never free", func(t *testing.T) {
+		if q := (Table{}).Cost("anything", small); q.Low <= 0 || q.Match != Unknown {
+			t.Errorf("quote = %+v", q)
+		}
+	})
 }
 
 const fixture = `{
  "anthropic": {"models": {
-   "claude-opus-5-5": {"name": "x", "cost": {"input": 4, "output": 20, "cache_read": 0.2, "cache_write": 5}},
+   "claude-opus-5-5": {"name": "x", "family": "claude-opus", "cost": {"input": 4, "output": 20, "cache_read": 0.2, "cache_write": 5}},
    "claude-free": {"name": "no cost"}
  }},
  "openai": {"models": {
@@ -195,7 +217,7 @@ func TestParseModelsDev(t *testing.T) {
 	if _, ok := tab.Models["llama"]; ok {
 		t.Error("unlisted provider should be skipped")
 	}
-	if got := tab.Models["claude-opus-5-5"]; got.Rates != r(4, 20, 0.2, 5) {
+	if got := tab.Models["claude-opus-5-5"]; got.Rates != r(4, 20, 0.2, 5) || got.Family != "claude-opus" {
 		t.Errorf("claude-opus-5-5 = %+v", got)
 	}
 	terra := tab.Models["gpt-6.1-terra"]
@@ -252,8 +274,8 @@ func TestTableJSONRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := Usage{Uncached: 300000, Output: 10, CacheRead: 5}
-	a, _ := in.Cost("gpt-6.1-terra", u)
-	b, _ := out.Cost("gpt-6.1-terra", u)
+	a := in.Cost("gpt-6.1-terra", u)
+	b := out.Cost("gpt-6.1-terra", u)
 	if a != b || out.Source != in.Source || !out.SyncedAt.Equal(in.SyncedAt) || !reflect.DeepEqual(out.Overrides, in.Overrides) {
 		t.Errorf("round trip mismatch: %+v vs %+v", in, out)
 	}

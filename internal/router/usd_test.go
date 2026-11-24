@@ -1,9 +1,11 @@
 package router
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -179,6 +181,60 @@ func TestPriceOverridesWin(t *testing.T) {
 	requireMetric(t, h, `fefo_cost_usd_total{client="pni",account="d@example.com"}`, "10")
 	if _, err := ParseConfig([]byte("prices: {x: {input: -1}}")); err == nil {
 		t.Fatal("negative price accepted")
+	}
+}
+
+func TestStatusUnitsAndUnknownModelWarning(t *testing.T) {
+	h := newHarness(t, "display_units: tokens")
+	h.r.observeStart = h.now.Add(-24 * time.Hour)
+	reset := h.now.Add(100 * time.Hour)
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{}, 0.10, reset)
+	h.advance(time.Minute)
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{InputTokens: 48_000}, 0.11, reset)
+	h.use("pni", acctD, "claude-fable-9", pluginapi.UsageDetail{InputTokens: 1_000}, 0.11, reset)
+	hd := &Handler{Router: h.r}
+	text := func(query string) string {
+		q, _ := url.ParseQuery(query)
+		return string(hd.management(pluginapi.ManagementRequest{Method: "GET", Path: "/v0/management/fefo/status", Query: q}).Body)
+	}
+	for _, tc := range []struct {
+		query     string
+		want, not []string
+	}{
+		{"format=text", []string{"tokens 24h", "demand 2.0k tok/h"}, []string{"demand $"}},
+		{"format=text&units=usd", []string{"remaining", "demand $"}, []string{"tok/h"}},
+		{"format=text&units=tokens", []string{"49.0k", "tok/h"}, []string{"demand $"}},
+	} {
+		got := text(tc.query)
+		for _, w := range tc.want {
+			if !strings.Contains(got, w) {
+				t.Fatalf("%s: missing %q:\n%s", tc.query, w, got)
+			}
+		}
+		for _, w := range tc.not {
+			if strings.Contains(got, w) {
+				t.Fatalf("%s: unexpected %q:\n%s", tc.query, w, got)
+			}
+		}
+	}
+	var st Status
+	if err := json.Unmarshal([]byte(text("")), &st); err != nil {
+		t.Fatal(err)
+	}
+	if d := st.Clients[1].Demand["claude"]; st.Clients[1].Client != "pni" || d.PerHour <= 0 || d.TokensPerHour != 49_000.0/24 {
+		t.Fatalf("status JSON should carry dollars and tokens: %+v", st.Clients[1])
+	}
+	warned := false
+	for _, w := range st.Warnings {
+		warned = warned || strings.Contains(w, "claude-fable-9 is not in the price table: 1 request(s) priced as the claude-fable range, $0.01–$0.01")
+	}
+	if !warned {
+		t.Fatalf("no unknown-model warning: %v", st.Warnings)
+	}
+	requireMetric(t, h, `fefo_unknown_model_requests_total{model="claude-fable-9"}`, "1")
+	requireMetric(t, h, `fefo_client_demand_per_hour{client="pni",provider="claude",window="24h",unit="tokens"}`, fmt.Sprint(49_000.0/24))
+	if h.metric(`fefo_account_capacity_usd{account="d@example.com",provider="claude",source="prior"}`) != "220" {
+		t.Fatal(h.r.Prometheus())
 	}
 }
 

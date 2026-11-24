@@ -77,6 +77,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
   </nav>
   <span class="spacer"></span>
   <span class="meta" id="meta"></span>
+  <label class="meta" style="display:flex;gap:4px;align-items:center;margin:0">units <select id="units"><option value="usd">$ (API-equivalent)</option><option value="tokens">tokens</option></select></label>
   <label class="meta" style="display:flex;gap:4px;align-items:center;margin:0"><input type="checkbox" id="auto" checked> auto-refresh</label>
 </header>
 <main>
@@ -182,6 +183,10 @@ function el(tag, attrs, ...kids) {
 function toast(msg, bad) { const t = $("toast"); t.textContent = msg; t.style.color = bad ? "var(--bad)" : ""; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500); }
 function pct(x) { return (x * 100).toFixed(0) + "%"; }
 function usd(x) { return "$" + (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2)); }
+function tok(x) { return x >= 1e9 ? (x / 1e9).toFixed(2) + "G" : x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? (x / 1e3).toFixed(1) + "k" : Math.round(x).toString(); }
+const UNITS_STORE = "fefo-router:units";
+function units() { try { return localStorage.getItem(UNITS_STORE) || status?.display_units || "usd"; } catch { return status?.display_units || "usd"; } }
+$("units").onchange = () => { try { localStorage.setItem(UNITS_STORE, $("units").value); } catch {} if (status) { renderOverview(); renderTraffic(); } };
 function until(t) {
   if (!t) return "?";
   let s = (new Date(t) - Date.now()) / 1000;
@@ -279,10 +284,15 @@ function renderOverview() {
       el("div", { class: "meta" }, `5h ${pct(x.short_remaining)} left · resets in ${until(x.short_reset)}`), bar(x.short_remaining),
       el("dl", { class: "kv" },
         el("dt", {}, "home clients"), el("dd", {}, (x.home_clients || []).join(", ") || "none (shared pool)"),
-        el("dt", {}, "capacity"), el("dd", { title: x.capacity_why || "" }, usd(x.capacity_usd) + "/week · " + x.capacity_source),
-        el("dt", {}, "remaining"), el("dd", {}, usd(x.remaining_usd)),
-        el("dt", {}, "expected use"), el("dd", {}, x.expected_usd == null ? "unknown yet" : usd(x.expected_usd)),
-        el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + usd(x.spare_usd)),
+        ...(units() === "tokens" ? [
+          el("dt", {}, "served"), el("dd", {}, `${tok(x.tokens_24h)} tokens in 24h · ${tok(x.tokens_7d)} in 7d`),
+          el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + pct(x.spare_usd / x.capacity_usd) + " of a week"),
+        ] : [
+          el("dt", {}, "capacity"), el("dd", { title: x.capacity_why || "" }, usd(x.capacity_usd) + "/week · " + x.capacity_source),
+          el("dt", {}, "remaining"), el("dd", {}, usd(x.remaining_usd)),
+          el("dt", {}, "expected use"), el("dd", {}, x.expected_usd == null ? "unknown yet" : usd(x.expected_usd)),
+          el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + usd(x.spare_usd)),
+        ]),
         el("dt", {}, "data age"), el("dd", {}, x.data_age || "—"),
         ...usageRows(x.usage_report)),
       x.blocked ? el("div", { class: "why err" }, x.blocked) : null,
@@ -293,7 +303,10 @@ function renderOverview() {
     const body = [];
     for (const p of Object.keys(x.plans || {}).sort()) {
       const d = x.demand[p] || {};
-      body.push(el("div", { class: "meta" }, p + ": " + (d.Known ? `demand ${usd(d.PerHour)}/h (24h ${usd(d.Day)}, 7d ${usd(d.Week)})` : "demand unknown — " + (d.Why || ""))));
+      const dem = units() === "tokens"
+        ? `demand ${tok(d.tokens_per_hour)} tokens/h (24h ${tok(d.tokens_per_hour_24h)}, 7d ${tok(d.tokens_per_hour_7d)})`
+        : `demand ${usd(d.usd_per_hour)}/h (24h ${usd(d.usd_per_hour_24h)}, 7d ${usd(d.usd_per_hour_7d)})`;
+      body.push(el("div", { class: "meta" }, p + ": " + (d.known ? dem : "demand unknown — " + (d.why || ""))));
       const ol = el("ol", { class: "plan" });
       for (const e of x.plans[p]) ol.append(el("li", {}, el("span", { class: "chip " + e.role }, e.role), " ", providerIcon(p), " ", el("strong", {}, e.account), el("div", { class: "why" }, e.why)));
       if (!x.plans[p].length) ol.append(el("li", { class: "err" }, "no usable account"));
@@ -308,10 +321,11 @@ function renderOverview() {
 // --- traffic ------------------------------------------------------------
 function renderTraffic() {
   const roles = ["own", "spare-first", "spare", "last-resort", "probe"];
-  const t = $("flows"); t.replaceChildren(el("tr", {}, el("th", {}, "client"), el("th", {}, "account"), el("th", {}, "buckets"), ...roles.map((r) => el("th", { class: "num" }, r)), el("th", { class: "num" }, "requests"), el("th", { class: "num" }, "tokens")));
+  const inTokens = units() === "tokens";
+  const t = $("flows"); t.replaceChildren(el("tr", {}, el("th", {}, "client"), el("th", {}, "account"), el("th", {}, "buckets"), ...roles.map((r) => el("th", { class: "num" }, r)), el("th", { class: "num" }, "requests"), el("th", { class: "num" }, inTokens ? "tokens" : "API-equivalent $")));
   for (const f of status.flows || []) {
     t.append(el("tr", {}, el("td", {}, f.client), el("td", {}, f.account), el("td", {}, (f.buckets || []).join(", ")),
-      ...roles.map((r) => el("td", { class: "num" }, f.picks_by_role?.[r] || "")), el("td", { class: "num" }, f.requests), el("td", { class: "num" }, f.tokens.toLocaleString())));
+      ...roles.map((r) => el("td", { class: "num" }, f.picks_by_role?.[r] || "")), el("td", { class: "num" }, f.requests), el("td", { class: "num" }, inTokens ? f.tokens.toLocaleString() : usd(f.cost_usd || 0))));
   }
   if (!(status.flows || []).length) t.append(el("tr", {}, el("td", { colspan: 10, class: "meta" }, "No traffic yet.")));
   renderDecisions();
@@ -367,7 +381,7 @@ const GLOBALS = [
   ["min_remaining", "number", "Block a window below this share"], ["min_history", "text", "History before lending"],
   ["session_ttl", "text", "Session pin lifetime"], ["usage_poll_interval", "text", "Claude usage report poll (0 = off)"], ["probe_interval", "text", "Probe accounts without data"],
   ["stale_after", "text", "Limit flags expire after"], ["allow_extra_usage", "checkbox", "Allow paid extra usage"],
-  ["log_decisions", "checkbox", "Log every decision"], ["pacing.enabled", "checkbox", "Pace near refills"],
+  ["log_decisions", "checkbox", "Log every decision"], ["display_units", "text", "Default units: usd or tokens"], ["pacing.enabled", "checkbox", "Pace near refills"],
   ["pacing.horizon", "text", "Pace if refill within"], ["pacing.max_delay", "text", "Max delay per request"],
   ["wait.horizon", "text", "Wait policy: refill within"], ["wait.max_wait", "text", "Wait policy: max hold"],
   ["pricing.sync", "checkbox", "Sync prices from models.dev"], ["pricing.sync_interval", "text", "Price sync interval"],
@@ -486,6 +500,7 @@ async function refresh(withConfig) {
     status = await api("/status?decisions=200");
     if (withConfig || !cfgView) cfgView = await api("/config");
     $("meta").textContent = `${status.plugin} ${status.version} · ${status.mode} · config: ${status.config_source} · spare factor ${status.spare_factor} · history ${status.history} · ${status.session_bindings} sessions · ${new Date().toLocaleTimeString()}`;
+    $("units").value = units();
     renderOverview(); renderTraffic(); renderOverrides(); renderConfig(!!withConfig); if (draft) renderUnknown();
   } catch (e) { if (e.message !== "unauthorized") toast("Refresh failed: " + e.message, true); }
 }

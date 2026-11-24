@@ -12,15 +12,31 @@ plugins:
 
       # Lend an account's quota to other buckets while
       #   remaining > spare_factor × (expected use by its home clients until it resets)
+      # Quota is measured in API-equivalent dollars (every request priced at
+      # its model's API rates).
       spare_factor: 1.5
-      min_spare: 0.03           # plan-weeks of spare needed before lending starts
+      min_spare: 0.03           # spare needed to start lending, share of the account's week
       min_history: 6h           # demand history needed before anything is lent
       min_remaining: 0.01       # a window with less left blocks the account
       session_ttl: 1h           # how long a (key, session) stays pinned to an account
       probe_interval: 5m        # accounts without quota data get one request this often
       stale_after: 30m          # limit flags without a reset time expire after this
-      allow_extra_usage: false  # never serve from paid overage
+      allow_extra_usage: false  # never serve from paid overage (also keeps Fable off plans without an allowance)
       log_decisions: true
+      display_units: usd        # usd | tokens: default units of the text status and the UI
+
+      # Each Claude account's usage report (Fable allowance, extra usage) is
+      # fetched through CPA this often; 0 disables.
+      usage_poll_interval: 5m
+      scoped_families: [fable]  # families with their own allowance, kept off plans without one
+
+      # Prices: config overrides > daily models.dev sync > built-in snapshot.
+      pricing:
+        sync: true
+        sync_interval: 24h
+        url: https://models.dev/api.json
+      # prices:
+      #   claude-fable-6: {input: 10, output: 50, cache_read: 1, cache_write: 12.5}   # USD per 1M tokens
 
       # Buckets: named groups of accounts (e-mail, auth file name or auth ID).
       buckets:
@@ -28,9 +44,15 @@ plugins:
         side:     [me@side.example]
         personal: [me@personal.example]
 
-      # Plan size, if accounts differ (1 = one plan-week of quota).
+      # Weekly capacity in dollars is learned per account from its traffic.
+      # Until then: capacity (relative, Pro = 1) × median learned $ per unit,
+      # or default_unit_usd before any account has learned.
       capacity:
         me@work.example: 1
+      default_unit_usd: 220
+      learn_min_delta: 0.05     # share of a week seen before an estimate is used
+      # capacity_usd:           # pin instead of learning
+      #   me@work.example: 1200
 
       # Clients: one or more API keys, an ordered list of buckets and what to do
       # when none of their buckets (and no spare elsewhere) can serve them.

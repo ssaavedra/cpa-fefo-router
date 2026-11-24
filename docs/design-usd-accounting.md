@@ -1,6 +1,6 @@
 # Design: quota in API-equivalent dollars
 
-Status: in progress on branch `usd-accounting`.
+Status: built on branch `usd-accounting`. Where the build differs from the text below, "As built" notes say how and why.
 
 ## Problem
 
@@ -98,6 +98,9 @@ back off to the next interval.
 - Config prior: `capacity` (relative, Pro = 1) × $ per unit, where $ per unit is the median
   learned $/unit over accounts that have an estimate, else `default_unit_usd` (default 220,
   measured Pro week on the hub). Config may also give `capacity_usd` per account to pin it.
+  As built: the median is taken per provider, because a Codex week and a Claude week hold
+  different dollars; pinned accounts do not enter it. Learning folds completed clock hours,
+  so an estimate lags by up to an hour.
 - **Scoped (Fable) gating.** For a request whose model family has a scoped window on the
   account, the account is excluded when that window's estimated remaining < `min_remaining`.
   Estimated remaining = last polled remaining − ($ spent on that family since the poll ÷
@@ -107,6 +110,13 @@ back off to the next interval.
   Scoped exhaustion never blocks other models on the account.
 - Fable demand and spare are tracked per scoped window the same way as weekly, so Fable
   requests prefer the account whose Fable allowance expires first.
+  As built: no separate Fable demand or spare. Within each role of the client's plan, accounts
+  with an allowance for the family come first, ordered by its reset (soonest first), then
+  unpolled accounts, then accounts without an allowance. A family's own window limits it on
+  any account whose report has one; the no-allowance rule applies only to `scoped_families`
+  (default `[fable]`), so a scoped window that appears for, say, Opus on one plan never
+  blocks Opus on plans without it. `allow_extra_usage: true` lifts the gate, matching its
+  meaning for shared windows.
 - Pricing sync: refresher fetches models.dev daily (`pricing.sync_interval`, default 24h;
   `pricing.url`), persists the table in the state file. Failure keeps the last table.
 

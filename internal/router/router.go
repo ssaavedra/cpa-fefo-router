@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"github.com/ssaavedra/cpa-fefo-router/internal/pricing"
 	"github.com/ssaavedra/cpa-fefo-router/internal/quota"
 )
 
@@ -52,6 +53,7 @@ type Router struct {
 	// Caller scopes seen that map to no configured client.
 	unknownScopes map[string]time.Time
 
+	prices       pricing.Table
 	accounts     map[string]*accountState
 	hours        map[string]map[int64]*hourBucket
 	observeStart time.Time
@@ -100,6 +102,7 @@ func New(opts ...Option) *Router {
 		overrides: map[string]Override{},
 		bindings:  map[string]binding{},
 		metrics:   newMetrics(),
+		prices:    embeddedPrices,
 
 		unknownScopes: map[string]time.Time{},
 	}
@@ -153,6 +156,9 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 	at := r.now()
 	snap, hasQuota := r.registry.Parse(rec.Provider, rec.ResponseHeaders, at)
 
+	usage := pricing.NormalizeUsage(rec.Provider, rec.Detail)
+	model := firstNonEmpty(rec.ResponseModel, rec.Model)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	client := r.clientForKeyLocked(rec.APIKey)
@@ -161,17 +167,22 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 	if tokens <= 0 {
 		tokens = rec.Detail.InputTokens + rec.Detail.OutputTokens + rec.Detail.ReasoningTokens
 	}
+	var cost pricing.Quote
+	if usage != (pricing.Usage{}) {
+		cost = r.prices.Cost(model, usage)
+	}
 	b := r.bucketLocked(authID, at)
 	if !rec.Failed {
-		if b.Requests == nil {
-			b.Requests = map[string]int{}
-		}
-		b.Requests[client]++
+		addTo(&b.Requests, client, 1)
 		if tokens > 0 {
-			if b.Tokens == nil {
-				b.Tokens = map[string]int64{}
+			addTo(&b.Tokens, client, tokens)
+		}
+		if cost.High > 0 {
+			addTo(&b.USDLow, client, cost.Low)
+			addTo(&b.USDHigh, client, cost.High)
+			if cost.Match == pricing.Unknown {
+				b.Tainted = true
 			}
-			b.Tokens[client] += tokens
 		}
 	}
 	r.metrics.usage(client, st.Info.display(), tokens, rec.Failed)

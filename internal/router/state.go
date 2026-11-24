@@ -100,19 +100,29 @@ type accountState struct {
 // hourBucket aggregates one account's usage within one clock hour.
 type hourBucket struct {
 	// Delta is the weekly-window share consumed in this hour by CPA traffic
-	// (0..1 of a plan-week), split between clients by tokens.
+	// (0..1 of a week), split between clients by their API-equivalent cost.
 	Delta float64 `json:"delta"`
 	// External is weekly-window share that accrued while CPA sent the account
 	// nothing (between readings more than attributionGap apart).
 	External float64 `json:"external,omitempty"`
-	// Tokens and Requests per client, used to split Delta between clients.
+	// Tokens and Requests per client: display, and the split fallback for
+	// hours recorded before requests were priced.
 	Tokens   map[string]int64 `json:"tokens,omitempty"`
 	Requests map[string]int   `json:"requests,omitempty"`
+	// USDLow and USDHigh are each client's requests at API prices. They differ
+	// only for models missing from the price table.
+	USDLow  map[string]float64 `json:"usd_low,omitempty"`
+	USDHigh map[string]float64 `json:"usd_high,omitempty"`
+	// Tainted hours are left out of capacity learning.
+	Tainted bool `json:"tainted,omitempty"`
 }
 
-// split returns each client's share of Delta. Delta seen in an hour with no
-// token-bearing requests is attributed to usage outside CPA.
-func (b *hourBucket) split() map[string]float64 {
+// split returns each client's share of Delta, weighted by cost. A home client
+// of the account is weighted by the high end of its cost and a borrower by
+// the low end, so an unpriced model never shifts blame off the home clients
+// (which would make the account lend more). Hours without prices fall back to
+// tokens, then requests; Delta with no requests at all happened outside CPA.
+func (b *hourBucket) split(home map[string]bool) map[string]float64 {
 	out := map[string]float64{}
 	if b.External > 0 {
 		out[externalClient] += b.External
@@ -120,28 +130,49 @@ func (b *hourBucket) split() map[string]float64 {
 	if b.Delta <= 0 {
 		return out
 	}
-	var total int64
-	for _, t := range b.Tokens {
-		total += t
+	weights := map[string]float64{}
+	for c, lo := range b.USDLow {
+		w := lo
+		if home[c] {
+			w = b.USDHigh[c]
+		}
+		if w > 0 {
+			weights[c] = w
+		}
+	}
+	if len(weights) == 0 {
+		for c, t := range b.Tokens {
+			if t > 0 {
+				weights[c] = float64(t)
+			}
+		}
+	}
+	if len(weights) == 0 {
+		for c, n := range b.Requests {
+			if n > 0 {
+				weights[c] = float64(n)
+			}
+		}
+	}
+	total := 0.0
+	for _, w := range weights {
+		total += w
 	}
 	if total <= 0 {
-		var reqs int
-		for _, n := range b.Requests {
-			reqs += n
-		}
-		if reqs == 0 {
-			out[externalClient] = b.Delta
-			return out
-		}
-		for c, n := range b.Requests {
-			out[c] += b.Delta * float64(n) / float64(reqs)
-		}
+		out[externalClient] += b.Delta
 		return out
 	}
-	for c, t := range b.Tokens {
-		out[c] += b.Delta * float64(t) / float64(total)
+	for c, w := range weights {
+		out[c] += b.Delta * w / total
 	}
 	return out
+}
+
+func addTo[V int | int64 | float64](m *map[string]V, k string, v V) {
+	if *m == nil {
+		*m = map[string]V{}
+	}
+	(*m)[k] += v
 }
 
 func hourOf(t time.Time) int64 { return t.Unix() / 3600 }

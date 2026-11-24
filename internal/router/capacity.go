@@ -69,7 +69,7 @@ func (r *Router) foldLocked(id string, now time.Time) {
 				continue
 			}
 		}
-		if b.Tainted || len(b.USDHigh) == 0 {
+		if b.Tainted || !b.Priced || len(b.USDHigh) == 0 {
 			continue
 		}
 		for _, v := range b.USDHigh {

@@ -261,3 +261,22 @@ func TestPinnedCapacityAndSpareInDollars(t *testing.T) {
 		}
 	}
 }
+
+func TestHourCarriedOverFromBeforePricingSplitsByTokens(t *testing.T) {
+	h := newHarness(t, "")
+	h.r.observeStart = h.now.Add(-24 * time.Hour)
+	reset := h.now.Add(100 * time.Hour)
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, 0.10, reset)
+	h.r.mu.Lock()
+	b := h.r.hours[acctD][hourOf(h.now)]
+	b.USDLow, b.USDHigh, b.Priced = nil, nil, false
+	b.Tokens = map[string]int64{"pni": 3000}
+	h.r.mu.Unlock()
+	h.advance(time.Minute)
+	h.use("connect", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, 0.14, reset)
+
+	pni, conn := h.demand("pni"), h.demand("connect")
+	if !closeTo(pni.PerHour/conn.PerHour, 3, 1e-9) {
+		t.Fatalf("an hour recorded before pricing must split by tokens, not hand it all to the priced client: pni %+v connect %+v", pni, conn)
+	}
+}

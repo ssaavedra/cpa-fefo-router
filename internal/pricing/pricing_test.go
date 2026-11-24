@@ -119,6 +119,8 @@ func TestResolve(t *testing.T) {
 		{"claude-opus-5-5-future", 4, Prefix},
 		{"gpt-6.1-terra-mini", 1, Prefix}, // longest prefix beats gpt-6.1 and gpt-6
 		{"  Claude-Opus-5-5 ", 4, Exact},
+		{"claude-opus-5-5-1", 0, Unknown}, // newer version, not a variant
+		{"gpt-6.2-terra", 0, Unknown},     // not gpt-6
 		{"totally-unknown", 0, Unknown},
 	}
 	for _, tc := range tests {
@@ -147,6 +149,7 @@ func TestUnknownModelQuotesFamilyInterval(t *testing.T) {
 		{"claude-fable-6", "claude-fable", []string{"claude-fable-5-2", "claude-fable-5-1"}},
 		{"claude-fable-6-20260101-thinking", "claude-fable", []string{"claude-fable-5-2", "claude-fable-5-1"}},
 		{"gpt-7.2-terra", "gpt-terra", []string{"gpt-6.1-terra"}},
+		{"gpt-6.2-terra", "gpt-terra", []string{"gpt-6.1-terra"}},
 		{"claude-brand-new-9", "claude", []string{"claude-opus-5-5", "claude-fable-5-2", "claude-fable-5-1", "claude-sonnet-5-1"}},
 		{"codex-whatever", "gpt", []string{"gpt-6.1-terra", "gpt-6", "o9"}},
 		{"mystery-model", "", []string{"claude-opus-5-5", "claude-fable-5-2", "claude-fable-5-1", "claude-sonnet-5-1", "gpt-6.1-terra", "gpt-6", "o9"}},

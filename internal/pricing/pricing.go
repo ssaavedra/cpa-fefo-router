@@ -142,7 +142,7 @@ func lookup(models map[string]Price, id string) (Price, Match, bool) {
 	}
 	longest := ""
 	for k := range models {
-		if len(k) > len(longest) && strings.HasPrefix(id, k) {
+		if len(k) > len(longest) && strings.HasPrefix(id, k) && variantTail(id[len(k):]) {
 			longest = k
 		}
 	}
@@ -150,6 +150,20 @@ func lookup(models map[string]Price, id string) (Price, Match, bool) {
 		return models[longest], Prefix, true
 	}
 	return Price{}, Unknown, false
+}
+
+// variantTail accepts "-fast" after a known id but not "-3" or ".2-terra": a
+// newer version must be priced as unknown, not at an older version's rates.
+func variantTail(rest string) bool {
+	if !strings.HasPrefix(rest, "-") {
+		return false
+	}
+	for _, tok := range strings.Split(rest[1:], "-") {
+		if strings.Trim(tok, "0123456789.") == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func normID(model string) string { return strings.ToLower(strings.TrimSpace(model)) }

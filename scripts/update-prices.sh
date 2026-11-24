@@ -18,7 +18,12 @@ def trim(c):
     if c.get("tiers"):
         t["tiers"] = [{**{k: x[k] for k in keep if k in x}, "tier": x["tier"]} for x in c["tiers"]]
     return t
-out = {p: {"models": {i: {"cost": trim(m["cost"])}
+def entry(m):
+    e = {"cost": trim(m["cost"])}
+    if m.get("family"):
+        e["family"] = m["family"]
+    return e
+out = {p: {"models": {i: entry(m)
                       for i, m in sorted(api[p]["models"].items()) if m.get("cost")}}
        for p in ("anthropic", "openai")}
 with open(dst, "w") as f:

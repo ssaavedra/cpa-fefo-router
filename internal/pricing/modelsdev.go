@@ -23,7 +23,8 @@ type mdCost struct {
 
 type mdProvider struct {
 	Models map[string]struct {
-		Cost *mdCost `json:"cost"`
+		Family string  `json:"family"`
+		Cost   *mdCost `json:"cost"`
 	} `json:"models"`
 }
 
@@ -55,7 +56,7 @@ func ParseModelsDev(raw []byte, providers ...string) (Table, error) {
 			if m.Cost == nil {
 				continue
 			}
-			p := Price{Rates: m.Cost.Rates}
+			p := Price{Rates: m.Cost.Rates, Family: m.Family}
 			for _, tr := range m.Cost.Tiers {
 				if tr.Tier.Type != "context" {
 					continue

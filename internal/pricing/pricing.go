@@ -37,6 +37,8 @@ type Tier struct {
 type Price struct {
 	Rates
 	Tiers []Tier `json:"tiers,omitempty"`
+	// Family is the models.dev family (claude-fable, gpt-terra); empty means derive it from the id.
+	Family string `json:"family,omitempty"`
 }
 
 // Usage is a request's token counts as non-overlapping billing buckets.
@@ -71,14 +73,31 @@ func (p Price) ratesAt(input int64) Rates {
 	return best
 }
 
-// Cost prices u at the given model's rates. A model that does not resolve is
-// priced protectively (see protective), never at zero.
-func (t Table) Cost(model string, u Usage) (float64, Match) {
-	p, m := t.Resolve(model)
-	r := p.ratesAt(u.InputTotal())
-	usd := (float64(u.Uncached)*r.Input + float64(u.Output)*r.Output +
+// Quote is a cost interval in USD. Low == High for a known model. For an
+// unknown one it spans the cheapest to the dearest model of Family.
+type Quote struct {
+	Low, High float64
+	Match     Match
+	Family    string
+}
+
+func (r Rates) usd(u Usage) float64 {
+	return (float64(u.Uncached)*r.Input + float64(u.Output)*r.Output +
 		float64(u.CacheRead)*r.CacheRead + float64(u.CacheWrite)*r.CacheWrite) / 1e6
-	return usd, m
+}
+
+// Cost prices u at the given model's rates. A model that does not resolve is
+// quoted as an interval over its family (see pool), never at zero.
+func (t Table) Cost(model string, u Usage) Quote {
+	id := normID(model)
+	p, m := t.Resolve(id)
+	if m != Unknown {
+		usd := p.ratesAt(u.InputTotal()).usd(u)
+		return Quote{Low: usd, High: usd, Match: m, Family: p.familyOr(stripSuffixes(id))}
+	}
+	fam, members := t.pool(id)
+	lo, hi := spread(members, u.InputTotal())
+	return Quote{Low: lo.usd(u), High: hi.usd(u), Match: Unknown, Family: fam}
 }
 
 var (
@@ -133,20 +152,42 @@ func lookup(models map[string]Price, id string) (Price, Match, bool) {
 	return Price{}, Unknown, false
 }
 
-// Resolve finds the price for a model id, or the protective price with Unknown.
+func normID(model string) string { return strings.ToLower(strings.TrimSpace(model)) }
+
+// Resolve finds the price for a model id. For an unknown id it returns a zero
+// Price and Unknown; use Cost to price such a model.
 func (t Table) Resolve(model string) (Price, Match) {
-	id := strings.ToLower(strings.TrimSpace(model))
+	id := normID(model)
 	if p, _, ok := lookup(t.Overrides, id); ok {
 		return p, Override
 	}
 	if p, m, ok := lookup(t.Models, id); ok {
 		return p, m
 	}
-	return t.protective(id), Unknown
+	return Price{}, Unknown
 }
 
-// family groups model ids by provider; "" means unrecognised.
-func family(id string) string {
+// familyOf drops version tokens (digits and dots) from a model id:
+// claude-fable-5-2 -> claude-fable, gpt-6.1-terra -> gpt-terra.
+func familyOf(id string) string {
+	var keep []string
+	for _, tok := range strings.Split(id, "-") {
+		if strings.Trim(tok, "0123456789.") != "" {
+			keep = append(keep, tok)
+		}
+	}
+	return strings.Join(keep, "-")
+}
+
+func (p Price) familyOr(id string) string {
+	if p.Family != "" {
+		return p.Family
+	}
+	return familyOf(id)
+}
+
+// provider groups model ids by vendor; "" means unrecognised.
+func provider(id string) string {
 	switch {
 	case strings.HasPrefix(id, "claude-"):
 		return "claude"
@@ -158,54 +199,58 @@ func family(id string) string {
 }
 
 // fallback prices an unknown model against an empty table, so it is never free.
-var fallback = Price{Rates: Rates{Input: 15, Output: 75, CacheRead: 1.5, CacheWrite: 18.75}}
+var fallback = Rates{Input: 15, Output: 75, CacheRead: 1.5, CacheWrite: 18.75}
 
-// protective is the per-component maximum, at every context tier boundary,
-// over the known models of id's family (the whole table when the family is
-// empty or has no entries). Over-pricing keeps an account's own clients from
-// being starved by lending against underestimated demand.
-func (t Table) protective(id string) Price {
-	fam := family(id)
-	var pool []Price
-	collect := func(famOnly bool) {
-		for _, models := range []map[string]Price{t.Models, t.Overrides} {
-			for k, p := range models {
-				if !famOnly || family(k) == fam {
-					pool = append(pool, p)
-				}
+// pool picks the known models an unknown id is priced against, narrowest
+// first: its inferred model family, then its provider, then the whole table.
+func (t Table) pool(id string) (string, []Price) {
+	inferred := familyOf(stripSuffixes(id))
+	vendor := provider(id)
+	var byFamily, byVendor, all []Price
+	for _, models := range []map[string]Price{t.Models, t.Overrides} {
+		for k, p := range models {
+			all = append(all, p)
+			if inferred != "" && p.familyOr(k) == inferred {
+				byFamily = append(byFamily, p)
+			}
+			if vendor != "" && provider(k) == vendor {
+				byVendor = append(byVendor, p)
 			}
 		}
 	}
-	collect(fam != "")
-	if len(pool) == 0 && fam != "" {
-		collect(false)
+	switch {
+	case len(byFamily) > 0:
+		return inferred, byFamily
+	case len(byVendor) > 0:
+		return vendor, byVendor
 	}
-	if len(pool) == 0 {
-		return fallback
-	}
-	bounds := map[int64]bool{}
-	for _, p := range pool {
-		for _, tr := range p.Tiers {
-			bounds[tr.AboveContext] = true
-		}
-	}
-	out := Price{Rates: maxRates(pool, 0)}
-	for b := range bounds {
-		out.Tiers = append(out.Tiers, Tier{AboveContext: b, Rates: maxRates(pool, b+1)})
-	}
-	return out
+	return "", all
 }
 
-func maxRates(pool []Price, input int64) Rates {
-	var m Rates
+// spread is the per-component min and max over pool at the given context size.
+// A zero minimum (a model that omits that rate) is raised to the maximum, so
+// no component of an unknown model's price is free.
+func spread(pool []Price, input int64) (lo, hi Rates) {
+	if len(pool) == 0 {
+		return fallback, fallback
+	}
+	lo = pool[0].ratesAt(input)
 	for _, p := range pool {
 		r := p.ratesAt(input)
-		m.Input = max(m.Input, r.Input)
-		m.Output = max(m.Output, r.Output)
-		m.CacheRead = max(m.CacheRead, r.CacheRead)
-		m.CacheWrite = max(m.CacheWrite, r.CacheWrite)
+		lo.Input, hi.Input = min(lo.Input, r.Input), max(hi.Input, r.Input)
+		lo.Output, hi.Output = min(lo.Output, r.Output), max(hi.Output, r.Output)
+		lo.CacheRead, hi.CacheRead = min(lo.CacheRead, r.CacheRead), max(hi.CacheRead, r.CacheRead)
+		lo.CacheWrite, hi.CacheWrite = min(lo.CacheWrite, r.CacheWrite), max(hi.CacheWrite, r.CacheWrite)
 	}
-	return m
+	for _, c := range []struct{ lo, hi *float64 }{
+		{&lo.Input, &hi.Input}, {&lo.Output, &hi.Output},
+		{&lo.CacheRead, &hi.CacheRead}, {&lo.CacheWrite, &hi.CacheWrite},
+	} {
+		if *c.lo == 0 {
+			*c.lo = *c.hi
+		}
+	}
+	return lo, hi
 }
 
 // WithOverrides returns a copy of t whose Overrides are the given prices.

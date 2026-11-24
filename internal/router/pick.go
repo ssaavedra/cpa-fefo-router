@@ -34,6 +34,8 @@ type Decision struct {
 	Policy   string    `json:"policy,omitempty"`
 	Ranking  []string  `json:"ranking,omitempty"`
 	Excluded []string  `json:"excluded,omitempty"`
+	// ScopedExcluded lists accounts excluded for this model's family only.
+	ScopedExcluded []string `json:"scoped_excluded,omitempty"`
 }
 
 // sessionMetadataKeys are host-populated session identities, strongest first.
@@ -116,6 +118,13 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 
 	pc := r.newPlanContextLocked(provider, now)
 	order, policy, policySrc := pc.plan(client, r.cfg.MinSpare)
+	fam := r.requestFamilyLocked(req.Model)
+	order, gated := pc.gateScoped(order, fam)
+	for _, id := range pc.order {
+		if why, ok := gated[id]; ok {
+			d.ScopedExcluded = append(d.ScopedExcluded, pc.evals[id].Name+": "+why)
+		}
+	}
 	d.Policy = string(policy) + " (" + policySrc + ")"
 	for _, p := range order {
 		mark := ""
@@ -168,7 +177,7 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 			}
 			// Spare hysteresis first: a borrowed account keeps its sessions while
 			// spare > 0, even if it dropped below min_spare for new ones.
-			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 && !contains(r.ownIDsLocked(pc, client), b.AuthID) {
+			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 && gated[b.AuthID] == "" && !contains(r.ownIDsLocked(pc, client), b.AuthID) {
 				return choose(b.AuthID, RoleSpare, fmt.Sprintf("pinned: spare $%.2f still above 0", e.Spare))
 			}
 			for _, p := range order {
@@ -192,13 +201,17 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 	// only serving from paid extra usage). Never let CPA pick one of those.
 	var blocked []string
 	for id := range cand {
-		if e := pc.evals[id]; e != nil && !e.Usable {
+		if e := pc.evals[id]; (e != nil && !e.Usable) || gated[id] != "" {
 			blocked = append(blocked, id)
 		}
 	}
 	sort.Strings(blocked)
 	if len(blocked) == len(cand) || policy != PolicyAny {
-		return r.rejectLocked(d, policy, client)
+		resp, d := r.rejectLocked(d, policy, client)
+		if len(gated) > 0 {
+			d.Reason += fmt.Sprintf("; %d account(s) excluded for %s", len(gated), fam)
+		}
+		return resp, d
 	}
 	// Policy any, and some offered credential is unknown to us: let CPA
 	// fill-first among the ones not known to be blocked.
@@ -238,7 +251,7 @@ func (r *Router) logDecision(d Decision) {
 	r.log("info", msg, map[string]any{
 		"client": d.Client, "provider": d.Provider, "model": d.Model, "session": d.Session,
 		"outcome": d.Outcome, "account": d.Account, "role": d.Role, "reason": d.Reason,
-		"policy": d.Policy, "runner_up": next,
+		"policy": d.Policy, "runner_up": next, "scoped_excluded": strings.Join(d.ScopedExcluded, "; "),
 	})
 }
 

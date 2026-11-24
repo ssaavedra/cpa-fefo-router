@@ -123,6 +123,14 @@ func (r *Router) Prometheus() string {
 		fmt.Fprintf(&b, "fefo_account_expected_usd%s %s\n", l, num(x.e.Expected))
 		fmt.Fprintf(&b, "fefo_account_spare_usd%s %s\n", l, num(x.e.Spare))
 	}
+	gauge("fefo_account_scoped_remaining", "Estimated unused share of a model family's own weekly allowance (polled, minus spend since).")
+	for _, x := range rows {
+		st := r.accounts[x.e.ID]
+		for _, w := range st.Usage.Report.ScopedWindows {
+			v := r.scopedLocked(st, x.e.Capacity.USD, w.Family, now)
+			fmt.Fprintf(&b, "fefo_account_scoped_remaining%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "window", w.Name), num(v.Estimated))
+		}
+	}
 	gauge("fefo_account_usable", "1 when the account can take traffic.")
 	for _, x := range rows {
 		v := 0.0

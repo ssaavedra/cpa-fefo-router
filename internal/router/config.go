@@ -95,6 +95,11 @@ type Config struct {
 	ProbeInterval time.Duration `yaml:"probe_interval" json:"probe_interval"`
 	// SessionTTL is how long a (key, session) binding lasts without traffic.
 	SessionTTL time.Duration `yaml:"session_ttl" json:"session_ttl"`
+	// ScopedFamilies are model families (as in Anthropic's usage report,
+	// "fable") that are limited by their own allowance. On an account whose
+	// usage report has no allowance for one of them, its requests would bill
+	// extra usage, so they are kept off that account.
+	ScopedFamilies []string `yaml:"scoped_families" json:"scoped_families"`
 	// AllowExtraUsage lets exhausted accounts with paid extra usage serve.
 	AllowExtraUsage bool `yaml:"allow_extra_usage" json:"allow_extra_usage"`
 	// UsagePollInterval is how often each Claude account's usage report is
@@ -153,6 +158,7 @@ func DefaultConfig() Config {
 		UsagePollInterval: 5 * time.Minute,
 		LogDecisions:      true,
 		DefaultUnitUSD:    220,
+		ScopedFamilies:    []string{"fable"},
 		LearnMinDelta:     0.05,
 		DefaultClient:     ClientConfig{OnExhausted: PolicyAny},
 		Pacing:            PacingConfig{Enabled: true, Horizon: 2 * time.Hour, MaxDelay: 30 * time.Second},
@@ -172,6 +178,7 @@ type rawConfig struct {
 	ProbeInterval     *string                 `yaml:"probe_interval"`
 	SessionTTL        *string                 `yaml:"session_ttl"`
 	AllowExtraUsage   *bool                   `yaml:"allow_extra_usage"`
+	ScopedFamilies    *[]string               `yaml:"scoped_families"`
 	RefreshInterval   *string                 `yaml:"refresh_interval"`
 	UsagePollInterval *string                 `yaml:"usage_poll_interval"`
 	StateFile         *string                 `yaml:"state_file"`
@@ -268,6 +275,17 @@ func ParseConfig(raw []byte) (Config, error) {
 	}
 	if rc.AllowExtraUsage != nil {
 		cfg.AllowExtraUsage = *rc.AllowExtraUsage
+	}
+	if rc.ScopedFamilies != nil {
+		cfg.ScopedFamilies = []string{}
+		for _, f := range *rc.ScopedFamilies {
+			f = strings.ToLower(strings.TrimSpace(f))
+			if f == "" || strings.ContainsAny(f, " \t") {
+				errs = append(errs, fmt.Sprintf("scoped_families: invalid family %q", f))
+				continue
+			}
+			cfg.ScopedFamilies = append(cfg.ScopedFamilies, f)
+		}
 	}
 	if rc.StateFile != nil {
 		cfg.StateFile = strings.TrimSpace(*rc.StateFile)

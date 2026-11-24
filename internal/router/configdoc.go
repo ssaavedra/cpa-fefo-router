@@ -21,6 +21,7 @@ type ConfigDoc struct {
 	SessionTTL        string               `json:"session_ttl"`
 	UsagePollInterval string               `json:"usage_poll_interval"`
 	AllowExtraUsage   bool                 `json:"allow_extra_usage"`
+	ScopedFamilies    []string             `json:"scoped_families"`
 	LogDecisions      bool                 `json:"log_decisions"`
 	Buckets           map[string][]string  `json:"buckets"`
 	Capacity          map[string]float64   `json:"capacity"`
@@ -79,7 +80,8 @@ func (c Config) Doc() ConfigDoc {
 		SessionTTL: durStr(c.SessionTTL), UsagePollInterval: durStr(c.UsagePollInterval), AllowExtraUsage: c.AllowExtraUsage, LogDecisions: c.LogDecisions,
 		Buckets: map[string][]string{}, Capacity: map[string]float64{}, CapacityUSD: map[string]float64{}, Clients: map[string]ClientDoc{},
 		DefaultUnitUSD: c.DefaultUnitUSD, LearnMinDelta: c.LearnMinDelta,
-		DefaultClient: clientDoc(c.DefaultClient),
+		ScopedFamilies: append([]string{}, c.ScopedFamilies...),
+		DefaultClient:  clientDoc(c.DefaultClient),
 	}
 	for k, v := range c.Buckets {
 		d.Buckets[k] = append([]string{}, v...)

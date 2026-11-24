@@ -124,6 +124,10 @@ type hourBucket struct {
 	// Tainted hours are left out of capacity learning: a request was priced
 	// as an unknown model, or the weekly window reset within the hour.
 	Tainted bool `json:"tainted,omitempty"`
+	// Priced is set when the hour was recorded by a router that prices every
+	// request. An hour carried over from before pricing has dollars for only
+	// part of its traffic, so its split and capacity use fall back to tokens.
+	Priced bool `json:"priced,omitempty"`
 }
 
 // split returns each client's share of Delta, weighted by cost. A home client
@@ -145,7 +149,7 @@ func (b *hourBucket) split(home map[string]bool) map[string]float64 {
 		if home[c] {
 			w = b.USDHigh[c]
 		}
-		if w > 0 {
+		if w > 0 && b.Priced {
 			weights[c] = w
 		}
 	}

@@ -352,7 +352,7 @@ func (r *Router) bucketLocked(authID string, at time.Time) *hourBucket {
 	h := hourOf(at)
 	b := hs[h]
 	if b == nil {
-		b = &hourBucket{}
+		b = &hourBucket{Priced: true}
 		hs[h] = b
 	}
 	return b

@@ -401,6 +401,7 @@ func (r *Router) Refresh(ctx context.Context) error {
 		r.mu.Unlock()
 	}
 	r.syncPrices(ctx, now)
+	r.pollUsage(ctx, now)
 	r.mu.Lock()
 	for id := range r.accounts {
 		r.foldLocked(id, now)
@@ -439,6 +440,7 @@ func (r *Router) applyHostLocked(entries []pluginapi.HostAuthFileEntry, now time
 		if e.Name != "" {
 			st.Info.Name = e.Name
 		}
+		st.Info.AuthIndex = strings.TrimSpace(e.AuthIndex)
 		st.Disabled = e.Disabled || strings.EqualFold(e.Status, "disabled")
 		st.NextRetryAfter = e.NextRetryAfter
 	}

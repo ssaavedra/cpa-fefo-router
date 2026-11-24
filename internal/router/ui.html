@@ -253,6 +253,16 @@ function providerIcon(provider) {
   else n.textContent = (p[0] || "?").toUpperCase();
   return n;
 }
+function usageRows(u) {
+  if (!u) return [];
+  const rows = [el("dt", {}, "usage report"), el("dd", { class: u.error ? "err" : "" }, u.error ? "poll failed: " + u.error : "polled " + when(u.polled_at))];
+  if (u.extra_usage_enabled != null) rows.push(el("dt", {}, "extra usage"), el("dd", { class: u.extra_usage_enabled ? "err" : "" }, u.extra_usage_enabled ? "enabled (paid)" : "off"));
+  for (const s of u.scoped || []) {
+    const est = s.estimated_remaining ?? s.polled_remaining;
+    rows.push(el("dt", {}, s.family), el("dd", { title: s.why || "" }, `${pct(est)} of ${pct(s.allowance)} allowance left · resets ${when(s.reset)}`));
+  }
+  return rows;
+}
 function renderOverview() {
   const w = $("warnings"); w.replaceChildren();
   for (const x of status.warnings || []) w.append(el("div", { class: "warn" }, "⚠ " + x));
@@ -273,7 +283,8 @@ function renderOverview() {
         el("dt", {}, "remaining"), el("dd", {}, usd(x.remaining_usd)),
         el("dt", {}, "expected use"), el("dd", {}, x.expected_usd == null ? "unknown yet" : usd(x.expected_usd)),
         el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + usd(x.spare_usd)),
-        el("dt", {}, "data age"), el("dd", {}, x.data_age || "—")),
+        el("dt", {}, "data age"), el("dd", {}, x.data_age || "—"),
+        ...usageRows(x.usage_report)),
       x.blocked ? el("div", { class: "why err" }, x.blocked) : null,
       x.spare_why ? el("div", { class: "why" }, x.spare_why) : null));
   }
@@ -353,7 +364,7 @@ const GLOBALS = [
   ["spare_factor", "number", "Lend while remaining > factor × expected"], ["min_spare", "number", "Spare needed to start lending, share of the account's week"],
   ["default_unit_usd", "number", "$ per unit of capacity before any account is learned"], ["learn_min_delta", "number", "Weekly share seen before a capacity estimate is used"],
   ["min_remaining", "number", "Block a window below this share"], ["min_history", "text", "History before lending"],
-  ["session_ttl", "text", "Session pin lifetime"], ["probe_interval", "text", "Probe accounts without data"],
+  ["session_ttl", "text", "Session pin lifetime"], ["usage_poll_interval", "text", "Claude usage report poll (0 = off)"], ["probe_interval", "text", "Probe accounts without data"],
   ["stale_after", "text", "Limit flags expire after"], ["allow_extra_usage", "checkbox", "Allow paid extra usage"],
   ["log_decisions", "checkbox", "Log every decision"], ["pacing.enabled", "checkbox", "Pace near refills"],
   ["pacing.horizon", "text", "Pace if refill within"], ["pacing.max_delay", "text", "Max delay per request"],

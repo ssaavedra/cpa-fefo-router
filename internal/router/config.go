@@ -97,6 +97,9 @@ type Config struct {
 	SessionTTL time.Duration `yaml:"session_ttl" json:"session_ttl"`
 	// AllowExtraUsage lets exhausted accounts with paid extra usage serve.
 	AllowExtraUsage bool `yaml:"allow_extra_usage" json:"allow_extra_usage"`
+	// UsagePollInterval is how often each Claude account's usage report is
+	// fetched. Zero disables polling.
+	UsagePollInterval time.Duration `yaml:"usage_poll_interval" json:"usage_poll_interval"`
 	// RefreshInterval for host auth list sync and state saving.
 	RefreshInterval time.Duration `yaml:"refresh_interval" json:"refresh_interval"`
 	// StateFile persists quota, history and overrides. Empty keeps memory only.
@@ -138,47 +141,49 @@ type Config struct {
 // DefaultConfig returns the defaults.
 func DefaultConfig() Config {
 	return Config{
-		Mode:            ModeActive,
-		SpareFactor:     1.5,
-		MinSpare:        0.03,
-		MinRemaining:    0.01,
-		MinHistory:      6 * time.Hour,
-		StaleAfter:      30 * time.Minute,
-		ProbeInterval:   5 * time.Minute,
-		SessionTTL:      time.Hour,
-		RefreshInterval: time.Minute,
-		LogDecisions:    true,
-		DefaultUnitUSD:  220,
-		LearnMinDelta:   0.05,
-		DefaultClient:   ClientConfig{OnExhausted: PolicyAny},
-		Pacing:          PacingConfig{Enabled: true, Horizon: 2 * time.Hour, MaxDelay: 30 * time.Second},
-		Wait:            WaitConfig{Horizon: 2 * time.Hour, MaxWait: 30 * time.Second},
-		Pricing:         PricingConfig{Sync: true, SyncInterval: 24 * time.Hour, URL: "https://models.dev/api.json"},
+		Mode:              ModeActive,
+		SpareFactor:       1.5,
+		MinSpare:          0.03,
+		MinRemaining:      0.01,
+		MinHistory:        6 * time.Hour,
+		StaleAfter:        30 * time.Minute,
+		ProbeInterval:     5 * time.Minute,
+		SessionTTL:        time.Hour,
+		RefreshInterval:   time.Minute,
+		UsagePollInterval: 5 * time.Minute,
+		LogDecisions:      true,
+		DefaultUnitUSD:    220,
+		LearnMinDelta:     0.05,
+		DefaultClient:     ClientConfig{OnExhausted: PolicyAny},
+		Pacing:            PacingConfig{Enabled: true, Horizon: 2 * time.Hour, MaxDelay: 30 * time.Second},
+		Wait:              WaitConfig{Horizon: 2 * time.Hour, MaxWait: 30 * time.Second},
+		Pricing:           PricingConfig{Sync: true, SyncInterval: 24 * time.Hour, URL: "https://models.dev/api.json"},
 	}
 }
 
 // rawConfig mirrors Config with durations as strings so "30m" parses.
 type rawConfig struct {
-	Mode            *string                 `yaml:"mode"`
-	SpareFactor     *float64                `yaml:"spare_factor"`
-	MinSpare        *float64                `yaml:"min_spare"`
-	MinRemaining    *float64                `yaml:"min_remaining"`
-	MinHistory      *string                 `yaml:"min_history"`
-	StaleAfter      *string                 `yaml:"stale_after"`
-	ProbeInterval   *string                 `yaml:"probe_interval"`
-	SessionTTL      *string                 `yaml:"session_ttl"`
-	AllowExtraUsage *bool                   `yaml:"allow_extra_usage"`
-	RefreshInterval *string                 `yaml:"refresh_interval"`
-	StateFile       *string                 `yaml:"state_file"`
-	LogDecisions    *bool                   `yaml:"log_decisions"`
-	Buckets         map[string][]string     `yaml:"buckets"`
-	Capacity        map[string]float64      `yaml:"capacity"`
-	CapacityUSD     map[string]float64      `yaml:"capacity_usd"`
-	DefaultUnitUSD  *float64                `yaml:"default_unit_usd"`
-	LearnMinDelta   *float64                `yaml:"learn_min_delta"`
-	Clients         map[string]ClientConfig `yaml:"clients"`
-	DefaultClient   *ClientConfig           `yaml:"default_client"`
-	Pacing          *struct {
+	Mode              *string                 `yaml:"mode"`
+	SpareFactor       *float64                `yaml:"spare_factor"`
+	MinSpare          *float64                `yaml:"min_spare"`
+	MinRemaining      *float64                `yaml:"min_remaining"`
+	MinHistory        *string                 `yaml:"min_history"`
+	StaleAfter        *string                 `yaml:"stale_after"`
+	ProbeInterval     *string                 `yaml:"probe_interval"`
+	SessionTTL        *string                 `yaml:"session_ttl"`
+	AllowExtraUsage   *bool                   `yaml:"allow_extra_usage"`
+	RefreshInterval   *string                 `yaml:"refresh_interval"`
+	UsagePollInterval *string                 `yaml:"usage_poll_interval"`
+	StateFile         *string                 `yaml:"state_file"`
+	LogDecisions      *bool                   `yaml:"log_decisions"`
+	Buckets           map[string][]string     `yaml:"buckets"`
+	Capacity          map[string]float64      `yaml:"capacity"`
+	CapacityUSD       map[string]float64      `yaml:"capacity_usd"`
+	DefaultUnitUSD    *float64                `yaml:"default_unit_usd"`
+	LearnMinDelta     *float64                `yaml:"learn_min_delta"`
+	Clients           map[string]ClientConfig `yaml:"clients"`
+	DefaultClient     *ClientConfig           `yaml:"default_client"`
+	Pacing            *struct {
 		Enabled  *bool   `yaml:"enabled"`
 		Horizon  *string `yaml:"horizon"`
 		MaxDelay *string `yaml:"max_delay"`
@@ -254,6 +259,13 @@ func ParseConfig(raw []byte) (Config, error) {
 	dur("probe_interval", rc.ProbeInterval, &cfg.ProbeInterval, 10*time.Second)
 	dur("session_ttl", rc.SessionTTL, &cfg.SessionTTL, time.Minute)
 	dur("refresh_interval", rc.RefreshInterval, &cfg.RefreshInterval, 10*time.Second)
+	if v := rc.UsagePollInterval; v != nil {
+		if d, err := time.ParseDuration(strings.TrimSpace(*v)); err == nil && d == 0 {
+			cfg.UsagePollInterval = 0
+		} else {
+			dur("usage_poll_interval", v, &cfg.UsagePollInterval, time.Minute)
+		}
+	}
 	if rc.AllowExtraUsage != nil {
 		cfg.AllowExtraUsage = *rc.AllowExtraUsage
 	}

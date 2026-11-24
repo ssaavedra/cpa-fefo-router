@@ -1,0 +1,89 @@
+# Reusable: test and build fefo-router.so against one CPA version, optionally
+# attaching it to a GitHub release.
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build (default the triggering ref).
+        type: string
+        default: ''
+      cpa_version:
+        description: "'latest', 'go.mod' (keep the pinned version) or a CPA version such as v8.1.2."
+        type: string
+        default: latest
+      release_tag:
+        description: When set, upload the .so to this release (created if missing).
+        type: string
+        default: ''
+    outputs:
+      cpa_version:
+        description: Resolved CPA version.
+        value: ${{ jobs.build.outputs.cpa_version }}
+
+env:
+  CPA_MODULE: github.com/router-for-me/CLIProxyAPI/v8
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      cpa_version: ${{ steps.cpa.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Select CPA version
+        id: cpa
+        env:
+          WANT: ${{ inputs.cpa_version }}
+        run: |
+          if [ "$WANT" != go.mod ]; then
+            go get "$CPA_MODULE@$WANT"
+            go mod tidy
+          fi
+          v=$(go list -m -f '{{.Version}}' "$CPA_MODULE")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Building against CPA $v" >> "$GITHUB_STEP_SUMMARY"
+          git diff --stat go.mod go.sum
+
+      - name: Test
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: Build
+        id: build
+        env:
+          CPA: ${{ steps.cpa.outputs.version }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          base=${TAG:-$(git describe --tags --always)}
+          name="fefo-router-${base}-cpa-${CPA}-linux-amd64.so"
+          VERSION="${base}+cpa.${CPA#v}" OUT="dist/$name" scripts/build-linux.sh
+          (cd dist && sha256sum "$name" > "$name.sha256")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.name }}
+          path: dist/${{ steps.build.outputs.name }}*
+          if-no-files-found: error
+
+      - name: Upload to release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          NAME: ${{ steps.build.outputs.name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          gh release upload "$TAG" --clobber "dist/$NAME" "dist/$NAME.sha256"

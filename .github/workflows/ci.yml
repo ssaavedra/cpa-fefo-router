@@ -1,0 +1,17 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # go.mod: the pinned CPA; latest: early warning when a new CPA breaks the build.
+        cpa: [go.mod, latest]
+    uses: ./.github/workflows/build.yml
+    with:
+      cpa_version: ${{ matrix.cpa }}

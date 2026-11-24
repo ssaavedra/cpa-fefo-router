@@ -1,0 +1,1 @@
+{"five_hour":null,"seven_day":{"utilization":100,"resets_at":"2026-11-25T22:59:59.756594+00:00"},"limits":[{"kind":"session","percent":0,"resets_at":null,"is_active":false},{"kind":"weekly_all","percent":100,"resets_at":"2026-11-25T22:59:59.756594+00:00","is_active":true}],"weekly_scoped_shares":null,"extra_usage":{"is_enabled":false,"spend_limit_reached":false}}

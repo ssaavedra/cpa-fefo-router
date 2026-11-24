@@ -258,6 +258,7 @@ function renderOverview() {
   for (const x of status.warnings || []) w.append(el("div", { class: "warn" }, "⚠ " + x));
   if (status.host_error) w.append(el("div", { class: "warn" }, "Host sync error: " + status.host_error));
   if (status.state_error) w.append(el("div", { class: "warn" }, "State file: " + status.state_error));
+  if (status.pricing?.sync_error) w.append(el("div", { class: "warn" }, "Price sync (keeping the " + status.pricing.source + " table): " + status.pricing.sync_error));
 
   const a = $("accounts"); a.replaceChildren();
   for (const x of status.accounts || []) {
@@ -357,6 +358,8 @@ const GLOBALS = [
   ["log_decisions", "checkbox", "Log every decision"], ["pacing.enabled", "checkbox", "Pace near refills"],
   ["pacing.horizon", "text", "Pace if refill within"], ["pacing.max_delay", "text", "Max delay per request"],
   ["wait.horizon", "text", "Wait policy: refill within"], ["wait.max_wait", "text", "Wait policy: max hold"],
+  ["pricing.sync", "checkbox", "Sync prices from models.dev"], ["pricing.sync_interval", "text", "Price sync interval"],
+  ["pricing.url", "text", "Price source URL"],
 ];
 function getPath(o, p) { return p.split(".").reduce((x, k) => x?.[k], o); }
 function setPath(o, p, v) { const ks = p.split("."); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; x[ks.at(-1)] = v; }

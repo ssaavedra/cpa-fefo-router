@@ -91,7 +91,7 @@ func setup(withHost bool) {
 		opts := []router.Option{}
 		if withHost {
 			h := router.HostClient{Call: callHost}
-			opts = append(opts, router.WithAuthLister(h), router.WithLogger(h.Log))
+			opts = append(opts, router.WithAuthLister(h), router.WithFetcher(h), router.WithLogger(h.Log))
 		}
 		r := router.New(opts...)
 		handler = &router.Handler{Router: r, OnConfigured: func() {

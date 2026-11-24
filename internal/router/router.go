@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -53,21 +54,26 @@ type Router struct {
 	// Caller scopes seen that map to no configured client.
 	unknownScopes map[string]time.Time
 
-	prices       pricing.Table
-	accounts     map[string]*accountState
-	hours        map[string]map[int64]*hourBucket
-	observeStart time.Time
-	scopes       map[string]string // caller scope -> client alias
-	overrides    map[string]Override
-	bindings     map[string]binding
-	decisions    []Decision
-	metrics      metrics
-	dirty        bool
-	hostSyncAt   time.Time
-	hostReady    bool // a host auth list with IDs was applied
-	hostErr      string
-	stateErr     string
-	loadedFrom   string
+	fetcher    HostFetcher
+	prices     pricing.Table // effective: overrides > synced > embedded
+	synced     pricing.Table // last models.dev sync
+	pricingErr string
+	// pricingTriedAt is the last sync attempt, successful or not.
+	pricingTriedAt time.Time
+	accounts       map[string]*accountState
+	hours          map[string]map[int64]*hourBucket
+	observeStart   time.Time
+	scopes         map[string]string // caller scope -> client alias
+	overrides      map[string]Override
+	bindings       map[string]binding
+	decisions      []Decision
+	metrics        metrics
+	dirty          bool
+	hostSyncAt     time.Time
+	hostReady      bool // a host auth list with IDs was applied
+	hostErr        string
+	stateErr       string
+	loadedFrom     string
 
 	refreshMu   sync.Mutex
 	refreshStop chan struct{}
@@ -88,6 +94,16 @@ func WithLogger(log LogFunc) Option { return func(r *Router) { r.log = log } }
 
 // WithAuthLister enables the periodic host auth refresh.
 func WithAuthLister(l AuthLister) Option { return func(r *Router) { r.lister = l } }
+
+// HostFetcher reads credentials and sends HTTP requests through the host.
+// Its calls block on the C ABI: never call it while holding r.mu.
+type HostFetcher interface {
+	AuthJSON(ctx context.Context, authIndex string) (json.RawMessage, error)
+	HTTPDo(ctx context.Context, req pluginapi.HTTPRequest) (pluginapi.HTTPResponse, error)
+}
+
+// WithFetcher enables price syncing and Claude usage polling.
+func WithFetcher(f HostFetcher) Option { return func(r *Router) { r.fetcher = f } }
 
 // New returns a router with the default config.
 func New(opts ...Option) *Router {
@@ -186,7 +202,7 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 			}
 		}
 	}
-	r.metrics.usage(client, st.Info.display(), tokens, rec.Failed)
+	r.metrics.usage(client, st.Info.display(), tokens, cost.High, rec.Failed)
 	r.dirty = true
 	if !hasQuota {
 		return
@@ -384,6 +400,7 @@ func (r *Router) Refresh(ctx context.Context) error {
 		}
 		r.mu.Unlock()
 	}
+	r.syncPrices(ctx, now)
 	r.mu.Lock()
 	for id := range r.accounts {
 		r.foldLocked(id, now)

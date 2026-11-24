@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ssaavedra/cpa-fefo-router/internal/pricing"
 )
 
 const stateVersion = 1
@@ -24,6 +26,8 @@ type persisted struct {
 	Overlay      string                           `json:"runtime_config,omitempty"`
 	OverlayAt    time.Time                        `json:"runtime_config_at,omitzero"`
 	OverlayNote  string                           `json:"runtime_config_note,omitempty"`
+	// Prices is the last models.dev sync.
+	Prices *pricing.Table `json:"prices,omitempty"`
 }
 
 func (r *Router) loadState(path string) {
@@ -95,6 +99,10 @@ func (r *Router) loadState(path string) {
 	if r.overlay == "" && p.Overlay != "" {
 		r.overlay, r.overlayAt, r.overlayNote = p.Overlay, p.OverlayAt, p.OverlayNote
 	}
+	if p.Prices != nil && p.Prices.SyncedAt.After(r.synced.SyncedAt) {
+		r.synced = *p.Prices
+		r.rebuildPricesLocked()
+	}
 	r.stateErr = ""
 }
 
@@ -109,6 +117,10 @@ func (r *Router) saveState() {
 		Version: stateVersion, SavedAt: r.now(), ObserveStart: r.observeStart,
 		Accounts: r.accounts, Hours: r.hours, Scopes: r.scopes, Overrides: r.overrides,
 		Overlay: r.overlay, OverlayAt: r.overlayAt, OverlayNote: r.overlayNote,
+	}
+	if len(r.synced.Models) > 0 {
+		synced := r.synced
+		p.Prices = &synced
 	}
 	raw, err := json.Marshal(p)
 	r.dirty = false

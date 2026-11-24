@@ -111,18 +111,18 @@ func (pc *planContext) gateScoped(order []planEntry, fam string) ([]planEntry, m
 		return order, gated
 	}
 	type rank struct {
-		tier  int // 0: own window, 1: not polled, 2: report shows no allowance
-		reset time.Time
+		tier int // 0: own window, 1: not polled, 2: report shows no allowance
+		v    scopedVerdict
 	}
 	ranks := map[string]rank{}
 	for _, id := range pc.order {
-		st, e := r.accounts[id], pc.evals[id]
-		v := r.scopedLocked(st, e.Capacity.USD, fam, pc.now)
+		st := r.accounts[id]
+		v := r.scopedLocked(st, pc.evals[id].Capacity.USD, fam, pc.now)
 		switch {
 		case v.Block != "":
 			gated[id] = v.Block
 		case v.HasWindow:
-			ranks[id] = rank{0, v.Window.ResetAt}
+			ranks[id] = rank{0, v}
 		case st.Usage.Report.HasReport:
 			ranks[id] = rank{tier: 2}
 		default:
@@ -134,10 +134,8 @@ func (pc *planContext) gateScoped(order []planEntry, fam string) ([]planEntry, m
 		if _, ok := gated[p.ID]; ok {
 			continue
 		}
-		if ranks[p.ID].tier == 0 {
-			st := r.accounts[p.ID]
-			v := r.scopedLocked(st, pc.evals[p.ID].Capacity.USD, fam, pc.now)
-			p.Why += fmt.Sprintf(", %s ~%.0f%% left, resets %s", fam, v.Estimated*100, fmtTime(v.Window.ResetAt))
+		if k := ranks[p.ID]; k.tier == 0 {
+			p.Why += fmt.Sprintf(", %s ~%.0f%% left, resets %s", fam, k.v.Estimated*100, fmtTime(k.v.Window.ResetAt))
 		}
 		out = append(out, p)
 	}
@@ -150,7 +148,8 @@ func (pc *planContext) gateScoped(order []planEntry, fam string) ([]planEntry, m
 		if ka.tier != kb.tier {
 			return ka.tier < kb.tier
 		}
-		return ka.tier == 0 && !ka.reset.IsZero() && (kb.reset.IsZero() || ka.reset.Before(kb.reset))
+		ra, rb := ka.v.Window.ResetAt, kb.v.Window.ResetAt
+		return ka.tier == 0 && !ra.IsZero() && (rb.IsZero() || ra.Before(rb))
 	})
 	return out, gated
 }

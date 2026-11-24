@@ -199,6 +199,7 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 			addTo(&b.USDHigh, client, cost.High)
 			if cost.Match == pricing.Unknown {
 				b.Tainted = true
+				r.metrics.unpriced(strings.ToLower(model), cost)
 			}
 			if st.Usage.Report.HasReport {
 				addTo(&st.Usage.SpendSince, scopeFamily(cost.Family), cost.High)

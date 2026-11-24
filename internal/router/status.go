@@ -37,6 +37,9 @@ type AccountView struct {
 	SpareWhy       string        `json:"spare_why,omitempty"`
 	DataAge        string        `json:"data_age,omitempty"`
 	Usage          *UsageView    `json:"usage_report,omitempty"`
+	// Tokens served on the account in the last 24 hours and 7 days.
+	Tokens24h int64 `json:"tokens_24h"`
+	Tokens7d  int64 `json:"tokens_7d"`
 }
 
 // ClientView is one client in the status report.
@@ -79,6 +82,8 @@ type Status struct {
 	ConfigSource string              `json:"config_source"`
 	Pricing      PricingView         `json:"pricing"`
 	Flows        []Flow              `json:"flows"`
+	// DisplayUnits is what Text shows: "usd" or "tokens". JSON carries both.
+	DisplayUnits string `json:"display_units"`
 }
 
 // UnknownKey is a client API key (as its caller scope) not in any client.
@@ -96,6 +101,7 @@ type Flow struct {
 	Picks    map[string]int `json:"picks_by_role"`
 	Requests int            `json:"requests"`
 	Tokens   int64          `json:"tokens"`
+	CostUSD  float64        `json:"cost_usd"`
 }
 
 func (r *Router) flowsLocked() []Flow {
@@ -122,6 +128,9 @@ func (r *Router) flowsLocked() []Flow {
 	}
 	for k, n := range r.metrics.tokens {
 		get(k[0], k[1]).Tokens += int64(n)
+	}
+	for k, n := range r.metrics.costUSD {
+		get(k[0], k[1]).CostUSD += n
 	}
 	for k, n := range r.metrics.requests {
 		get(k[0], k[1]).Requests += int(n)
@@ -161,7 +170,26 @@ func (r *Router) warningsLocked() []string {
 			out = append(out, fmt.Sprintf("client %s: no keys configured, it can never be recognised", alias))
 		}
 	}
+	for _, m := range sortedKeys(r.metrics.unknown) {
+		u := r.metrics.unknown[m]
+		out = append(out, fmt.Sprintf("model %s is not in the price table: %d request(s) priced as the %s range, $%.2f–$%.2f in total; home clients are charged the high end, borrowers the low end, and capacity learning skips those hours. Add it under prices: or wait for the next sync",
+			m, u.Requests, u.Family, u.Low, u.High))
+	}
 	return out
+}
+
+// tokensLocked sums the tokens served on an account over the last window.
+func (r *Router) tokensLocked(id string, now time.Time, window time.Duration) int64 {
+	from := hourOf(now.Add(-window)) + 1
+	var n int64
+	for h, b := range r.hours[id] {
+		if h >= from {
+			for _, t := range b.Tokens {
+				n += t
+			}
+		}
+	}
+	return n
 }
 
 // Status builds the diagnostic snapshot.
@@ -180,6 +208,8 @@ func (r *Router) Status(decisions int) Status {
 		Overrides: map[string]Override{},
 		Warnings:  r.warningsLocked(),
 		Pricing:   r.pricingViewLocked(),
+
+		DisplayUnits: cfg.DisplayUnits,
 	}
 	for k, o := range r.overrides {
 		if o.active(now) {
@@ -205,7 +235,8 @@ func (r *Router) Status(decisions int) Status {
 				ShortRemaining: e.ShortRemaining, ShortReset: e.ShortReset,
 				CapacityUSD: e.Capacity.USD, CapacitySource: e.Capacity.Source, CapacityWhy: e.Capacity.Why,
 				CapacityLearn: r.accounts[id].Learn, RemainingUSD: e.remaining(), SpareWhy: e.SpareWhy,
-				Usage: r.usageViewLocked(r.accounts[id], e.Capacity.USD, now),
+				Usage:     r.usageViewLocked(r.accounts[id], e.Capacity.USD, now),
+				Tokens24h: r.tokensLocked(id, now, 24*time.Hour), Tokens7d: r.tokensLocked(id, now, 7*24*time.Hour),
 			}
 			if !math.IsInf(e.Expected, 0) {
 				x, s := e.Expected, e.Spare
@@ -265,8 +296,9 @@ func (r *Router) Status(decisions int) Status {
 	return st
 }
 
-// Text renders the status for humans.
+// Text renders the status for humans, in s.DisplayUnits.
 func (s Status) Text() string {
+	tokens := s.DisplayUnits == UnitsTokens
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s  mode=%s  spare_factor=%.2f  history=%s  sessions=%d\n", s.Plugin, s.Version, s.Mode, s.SpareFactor, s.History, s.Bindings)
 	if s.HostError != "" {
@@ -294,7 +326,11 @@ func (s Status) Text() string {
 	}
 	b.WriteString("\nACCOUNTS\n")
 	tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "  account\tprovider\tbuckets\tweekly\tresets\t5h\tstate\tcapacity\tremaining\texpected\tspare\tdata age")
+	if tokens {
+		fmt.Fprintln(tw, "  account\tprovider\tbuckets\tweekly\tresets\t5h\tstate\ttokens 24h\ttokens 7d\tspare (of week)\tdata age")
+	} else {
+		fmt.Fprintln(tw, "  account\tprovider\tbuckets\tweekly\tresets\t5h\tstate\tcapacity\tremaining\texpected\tspare\tdata age")
+	}
 	for _, a := range s.Accounts {
 		state := "usable"
 		if !a.Usable {
@@ -302,9 +338,13 @@ func (s Status) Text() string {
 		} else if a.NoData {
 			state = "usable (no data)"
 		}
-		exp, spare := "?", "?"
+		exp, spare, spareShare := "?", "?", "?"
 		if a.ExpectedUSD != nil {
 			exp, spare = fmt.Sprintf("$%.2f", *a.ExpectedUSD), fmt.Sprintf("%+.2f", *a.SpareUSD)
+			spare = spare[:1] + "$" + spare[1:]
+			if a.CapacityUSD > 0 {
+				spareShare = fmt.Sprintf("%+.0f%%", *a.SpareUSD/a.CapacityUSD*100)
+			}
 		}
 		resets := "?"
 		if !a.WeeklyReset.IsZero() {
@@ -313,8 +353,13 @@ func (s Status) Text() string {
 				resets = fmtTime(a.WeeklyReset) + " (" + fmtDur(a.WeeklyReset.Sub(s.Now)) + ")"
 			}
 		}
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%.0f%%\t%s\t%.0f%%\t%s\t$%.2f\t$%.2f\t%s\t%s\t%s\n", a.Account, a.Provider, strings.Join(a.Buckets, ","),
-			a.WeeklyRemaining*100, resets, a.ShortRemaining*100, state, a.CapacityUSD, a.RemainingUSD, exp, spare, a.DataAge)
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%.0f%%\t%s\t%.0f%%\t%s\t", a.Account, a.Provider, strings.Join(a.Buckets, ","),
+			a.WeeklyRemaining*100, resets, a.ShortRemaining*100, state)
+		if tokens {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", fmtTokens(float64(a.Tokens24h)), fmtTokens(float64(a.Tokens7d)), spareShare, a.DataAge)
+		} else {
+			fmt.Fprintf(tw, "$%.2f\t$%.2f\t%s\t%s\t%s\n", a.CapacityUSD, a.RemainingUSD, exp, spare, a.DataAge)
+		}
 	}
 	tw.Flush()
 	for _, a := range s.Accounts {
@@ -323,7 +368,11 @@ func (s Status) Text() string {
 			fmt.Fprintf(&b, "  · %s: %s\n", a.Account, a.SpareWhy)
 		}
 		if u := a.Usage; u != nil {
-			fmt.Fprintf(&b, "  · %s: usage report %s", a.Account, fmtTime(u.PolledAt))
+			if u.PolledAt.IsZero() {
+				fmt.Fprintf(&b, "  · %s: no usage report yet", a.Account)
+			} else {
+				fmt.Fprintf(&b, "  · %s: usage report %s", a.Account, fmtTime(u.PolledAt))
+			}
 			if u.ExtraUsageEnabled != nil {
 				fmt.Fprintf(&b, ", extra usage %s", map[bool]string{true: "ENABLED", false: "off"}[*u.ExtraUsageEnabled])
 			}
@@ -347,7 +396,10 @@ func (s Status) Text() string {
 		for _, p := range sortedKeys(c.Plans) {
 			d := c.Demand[p]
 			dem := "demand unknown: " + d.Why
-			if d.Known {
+			switch {
+			case d.Known && tokens:
+				dem = fmt.Sprintf("demand %s tok/h (24h %s, 7d %s)", fmtTokens(d.TokensPerHour), fmtTokens(d.TokensDay), fmtTokens(d.TokensWeek))
+			case d.Known:
 				dem = fmt.Sprintf("demand $%.2f/h (24h $%.2f, 7d $%.2f)", d.PerHour, d.Day, d.Week)
 			}
 			fmt.Fprintf(&b, "    %s: %s\n", p, dem)
@@ -364,6 +416,18 @@ func (s Status) Text() string {
 		fmt.Fprintf(&b, "  %s %-14s %-6s session=%-6s %-9s → %s [%s] %s\n", d.Time.UTC().Format("15:04:05"), d.Client, d.Provider, d.Session, d.Outcome, d.Account, d.Role, d.Reason)
 	}
 	return b.String()
+}
+
+func fmtTokens(n float64) string {
+	switch {
+	case n >= 1e9:
+		return fmt.Sprintf("%.2fG", n/1e9)
+	case n >= 1e6:
+		return fmt.Sprintf("%.2fM", n/1e6)
+	case n >= 1e3:
+		return fmt.Sprintf("%.1fk", n/1e3)
+	}
+	return fmt.Sprintf("%.0f", n)
 }
 
 // overrideRequest is the body of POST /fefo/override.

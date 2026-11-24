@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ssaavedra/cpa-fefo-router/internal/pricing"
 )
 
 // metrics are cumulative counters since plugin load.
@@ -13,6 +15,7 @@ type metrics struct {
 	picks        map[[4]string]float64 // client, account, role, outcome
 	tokens       map[[2]string]float64 // client, account
 	costUSD      map[[2]string]float64 // client, account
+	unknown      map[string]*unknownModel
 	requests     map[[3]string]float64 // client, account, failed
 	pacedSeconds map[string]float64
 	pacedCount   map[string]float64
@@ -24,6 +27,7 @@ func newMetrics() metrics {
 		picks:        map[[4]string]float64{},
 		tokens:       map[[2]string]float64{},
 		costUSD:      map[[2]string]float64{},
+		unknown:      map[string]*unknownModel{},
 		requests:     map[[3]string]float64{},
 		pacedSeconds: map[string]float64{},
 		pacedCount:   map[string]float64{},
@@ -39,6 +43,29 @@ func (m *metrics) usage(client, account string, tokens int64, usd float64, faile
 	m.tokens[[2]string{client, account}] += float64(tokens)
 	m.costUSD[[2]string{client, account}] += usd
 	m.requests[[3]string{client, account, fmt.Sprint(failed)}]++
+}
+
+// unknownModel counts requests priced as a family range because the model
+// is missing from the price table.
+type unknownModel struct {
+	Family    string
+	Requests  int
+	Low, High float64
+}
+
+func (m *metrics) unpriced(model string, q pricing.Quote) {
+	u := m.unknown[model]
+	if u == nil {
+		if len(m.unknown) >= 100 {
+			return
+		}
+		u = &unknownModel{}
+		m.unknown[model] = u
+	}
+	u.Family = q.Family
+	u.Requests++
+	u.Low += q.Low
+	u.High += q.High
 }
 
 func (m *metrics) paced(client string, d time.Duration) {
@@ -139,7 +166,7 @@ func (r *Router) Prometheus() string {
 		}
 		fmt.Fprintf(&b, "fefo_account_usable%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "reason", x.e.Block), num(v))
 	}
-	gauge("fefo_client_demand_per_hour", "Client consumption in API-equivalent USD per hour.")
+	gauge("fefo_client_demand_per_hour", "Client consumption per hour in API-equivalent USD (unit=usd) or tokens (unit=tokens).")
 	for _, p := range sortedKeys(providers) {
 		pc := r.newPlanContextLocked(p, now)
 		clients := append(sortedKeys(r.cfg.Clients), externalClient)
@@ -148,8 +175,10 @@ func (r *Router) Prometheus() string {
 			if !ri.Known {
 				continue
 			}
-			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "24h"), num(ri.Day))
-			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "7d"), num(ri.Week))
+			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "24h", "unit", "usd"), num(ri.Day))
+			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "7d", "unit", "usd"), num(ri.Week))
+			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "24h", "unit", "tokens"), num(ri.TokensDay))
+			fmt.Fprintf(&b, "fefo_client_demand_per_hour%s %s\n", lbl("client", c, "provider", p, "window", "7d", "unit", "tokens"), num(ri.TokensWeek))
 		}
 	}
 	counter("fefo_picks_total", "Routing decisions.")
@@ -163,6 +192,10 @@ func (r *Router) Prometheus() string {
 	counter("fefo_cost_usd_total", "API-equivalent USD served (high end of the quote for unpriced models).")
 	for _, k := range sortedTupleKeys(r.metrics.costUSD) {
 		fmt.Fprintf(&b, "fefo_cost_usd_total%s %s\n", lbl("client", k[0], "account", k[1]), num(r.metrics.costUSD[k]))
+	}
+	counter("fefo_unknown_model_requests_total", "Requests whose model is missing from the price table (priced as a family range).")
+	for _, m := range sortedKeys(r.metrics.unknown) {
+		fmt.Fprintf(&b, "fefo_unknown_model_requests_total%s %d\n", lbl("model", m), r.metrics.unknown[m].Requests)
 	}
 	gauge("fefo_prices_synced_timestamp", "Unix time of the last successful models.dev price sync (0: never).")
 	synced := 0.0

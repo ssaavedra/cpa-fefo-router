@@ -109,6 +109,8 @@ type Config struct {
 	RefreshInterval time.Duration `yaml:"refresh_interval" json:"refresh_interval"`
 	// StateFile persists quota, history and overrides. Empty keeps memory only.
 	StateFile string `yaml:"state_file" json:"state_file"`
+	// DisplayUnits is what the status text and UI show by default: usd or tokens.
+	DisplayUnits string `yaml:"display_units" json:"display_units"`
 	// LogDecisions writes one line per routing decision.
 	LogDecisions bool `yaml:"log_decisions" json:"log_decisions"`
 
@@ -157,6 +159,7 @@ func DefaultConfig() Config {
 		RefreshInterval:   time.Minute,
 		UsagePollInterval: 5 * time.Minute,
 		LogDecisions:      true,
+		DisplayUnits:      UnitsUSD,
 		DefaultUnitUSD:    220,
 		ScopedFamilies:    []string{"fable"},
 		LearnMinDelta:     0.05,
@@ -183,6 +186,7 @@ type rawConfig struct {
 	UsagePollInterval *string                 `yaml:"usage_poll_interval"`
 	StateFile         *string                 `yaml:"state_file"`
 	LogDecisions      *bool                   `yaml:"log_decisions"`
+	DisplayUnits      *string                 `yaml:"display_units"`
 	Buckets           map[string][]string     `yaml:"buckets"`
 	Capacity          map[string]float64      `yaml:"capacity"`
 	CapacityUSD       map[string]float64      `yaml:"capacity_usd"`
@@ -293,6 +297,13 @@ func ParseConfig(raw []byte) (Config, error) {
 	if rc.LogDecisions != nil {
 		cfg.LogDecisions = *rc.LogDecisions
 	}
+	if rc.DisplayUnits != nil {
+		if u, ok := parseUnits(*rc.DisplayUnits); ok {
+			cfg.DisplayUnits = u
+		} else {
+			errs = append(errs, fmt.Sprintf("display_units: want usd or tokens, got %q", *rc.DisplayUnits))
+		}
+	}
 	if rc.Pacing != nil {
 		if rc.Pacing.Enabled != nil {
 			cfg.Pacing.Enabled = *rc.Pacing.Enabled
@@ -398,6 +409,20 @@ func ParseConfig(raw []byte) (Config, error) {
 		return DefaultConfig(), fmt.Errorf("invalid config: %s", strings.Join(errs, "; "))
 	}
 	return cfg, nil
+}
+
+// Display units for status text and the UI.
+const (
+	UnitsUSD    = "usd"
+	UnitsTokens = "tokens"
+)
+
+func parseUnits(s string) (string, bool) {
+	switch u := strings.ToLower(strings.TrimSpace(s)); u {
+	case UnitsUSD, UnitsTokens:
+		return u, true
+	}
+	return "", false
 }
 
 // bucketsOf returns, for an account, the buckets that list it.

@@ -76,12 +76,17 @@ type planContext struct {
 	demand   map[string]rateInfo
 }
 
+// rateInfo is a client's demand. Dollars drive routing; tokens are display.
 type rateInfo struct {
-	Known   bool
-	PerHour float64 // dollars per hour, max of 24h and 7d averages
-	Day     float64
-	Week    float64
-	Why     string
+	Known   bool    `json:"known"`
+	PerHour float64 `json:"usd_per_hour"` // max of the 24h and 7d averages
+	Day     float64 `json:"usd_per_hour_24h"`
+	Week    float64 `json:"usd_per_hour_7d"`
+	// Tokens per hour over the same windows.
+	TokensPerHour float64 `json:"tokens_per_hour"`
+	TokensDay     float64 `json:"tokens_per_hour_24h"`
+	TokensWeek    float64 `json:"tokens_per_hour_7d"`
+	Why           string  `json:"why,omitempty"`
 }
 
 // spareFactorLocked applies a runtime override.
@@ -245,10 +250,9 @@ func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 		return ri
 	}
 	nowH := hourOf(pc.now)
-	sum := func(window time.Duration) float64 {
+	sum := func(window time.Duration) (usd, tokens float64) {
 		eff := math.Min(window.Hours(), observed.Hours())
 		from := nowH - int64(math.Ceil(eff)) + 1
-		total := 0.0
 		for _, id := range pc.order {
 			if onlyAccount != "" && id != onlyAccount {
 				continue
@@ -260,16 +264,18 @@ func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 			}
 			for h, b := range r.hours[id] {
 				if h >= from && h <= nowH {
-					total += b.split(home)[client] * e.Capacity.USD
+					usd += b.split(home)[client] * e.Capacity.USD
+					tokens += float64(b.Tokens[client])
 				}
 			}
 		}
-		return total / math.Max(eff, 1)
+		hours := math.Max(eff, 1)
+		return usd / hours, tokens / hours
 	}
 	ri.Known = true
-	ri.Day = sum(24 * time.Hour)
-	ri.Week = sum(7 * 24 * time.Hour)
-	ri.PerHour = math.Max(ri.Day, ri.Week)
+	ri.Day, ri.TokensDay = sum(24 * time.Hour)
+	ri.Week, ri.TokensWeek = sum(7 * 24 * time.Hour)
+	ri.PerHour, ri.TokensPerHour = math.Max(ri.Day, ri.Week), math.Max(ri.TokensDay, ri.TokensWeek)
 	pc.demand[key] = ri
 	return ri
 }

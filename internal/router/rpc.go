@@ -145,7 +145,7 @@ func (h *Handler) dispatch(method string, request []byte) ([]byte, error) {
 	case pluginabi.MethodManagementRegister:
 		return okEnvelope(managementRegistration{
 			Routes: []pluginapi.ManagementRoute{
-				{Method: http.MethodGet, Path: pathStatus, Description: "FEFO router status: accounts, spare, client plans, traffic, recent decisions. ?format=text for a table."},
+				{Method: http.MethodGet, Path: pathStatus, Description: "FEFO router status: accounts, spare, client plans, traffic, recent decisions. ?format=text for a table, ?units=usd|tokens for its units."},
 				{Method: http.MethodGet, Path: pathMetrics, Description: "Prometheus metrics."},
 				{Method: http.MethodPost, Path: pathOverride, Description: `Temporary override: {"client":"c","policy":"any","for":"2h"}, {"spare_factor":2,"for":"1h"} or {"client":"c","clear":true}.`},
 				{Method: http.MethodGet, Path: pathConfig, Description: "Effective routing config, config.yaml section and runtime config."},
@@ -192,6 +192,7 @@ func (h *Handler) registration(cfg Config) registration {
 				f("prices", pluginapi.ConfigFieldTypeObject, "Per-model price overrides in USD per 1M tokens: input, output, cache_read, cache_write."),
 				f("state_file", pluginapi.ConfigFieldTypeString, "Where to persist quota and usage history."),
 				f("log_decisions", pluginapi.ConfigFieldTypeBoolean, "Log every routing decision with the chosen account and why."),
+				f("display_units", pluginapi.ConfigFieldTypeEnum, "Default units of the status text and UI: API-equivalent dollars or tokens.", UnitsUSD, UnitsTokens),
 			},
 		},
 		Capabilities: capabilities{
@@ -239,6 +240,9 @@ func (h *Handler) management(req pluginapi.ManagementRequest) pluginapi.Manageme
 			n = v
 		}
 		st := h.Router.Status(n)
+		if u, ok := parseUnits(req.Query.Get("units")); ok {
+			st.DisplayUnits = u
+		}
 		if req.Query.Get("format") == "text" {
 			return pluginapi.ManagementResponse{StatusCode: 200, Headers: textH, Body: []byte(st.Text())}
 		}

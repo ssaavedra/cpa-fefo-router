@@ -213,13 +213,19 @@ async function api(path, body) {
   const opts = { headers: { Authorization: "Bearer " + key } };
   if (body !== undefined) { opts.method = "POST"; opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   const res = await fetch(API + path, opts);
-  if (res.status === 401 || res.status === 403) { showLogin("Key rejected."); throw new Error("unauthorized"); }
+  if (res.status === 401 || res.status === 403) {
+    // Stop polling with a rejected key: CPA bans the IP after a few failed management calls.
+    $("auto").checked = false; clearInterval(timer); key = "";
+    try { sessionStorage.removeItem(KEY_STORE); } catch {}
+    showLogin(res.status === 403 ? "Access denied (CPA may have temporarily banned this IP after failed attempts)." : "Key rejected.");
+    throw new Error("unauthorized");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
 function showLogin(msg) { $("login").hidden = false; $("loginErr").textContent = msg || ""; }
-$("keyBtn").onclick = () => { key = $("keyInput").value.trim(); try { sessionStorage.setItem(KEY_STORE, key); } catch {} $("login").hidden = true; refresh(true); };
+$("keyBtn").onclick = () => { key = $("keyInput").value.trim(); try { sessionStorage.setItem(KEY_STORE, key); } catch {} $("login").hidden = true; $("auto").checked = true; refresh(true); schedule(); };
 
 // --- tabs ---------------------------------------------------------------
 for (const b of document.querySelectorAll("#tabs button")) {

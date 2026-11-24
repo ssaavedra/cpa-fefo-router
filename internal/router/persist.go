@@ -69,6 +69,9 @@ func (r *Router) loadState(path string) {
 			if cur.Learn.Folded == 0 {
 				cur.Learn = st.Learn
 			}
+			if !cur.Usage.Report.HasReport {
+				cur.Usage.Report, cur.Usage.SpendSince = st.Usage.Report, st.Usage.SpendSince
+			}
 			continue
 		}
 		st.Info.ID = id

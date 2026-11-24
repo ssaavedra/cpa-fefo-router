@@ -12,23 +12,24 @@ import (
 // ConfigDoc is the editable routing configuration, as JSON (which is also
 // valid YAML, so ParseConfig reads it). Durations are strings like "6h".
 type ConfigDoc struct {
-	SpareFactor     float64              `json:"spare_factor"`
-	MinSpare        float64              `json:"min_spare"`
-	MinRemaining    float64              `json:"min_remaining"`
-	MinHistory      string               `json:"min_history"`
-	StaleAfter      string               `json:"stale_after"`
-	ProbeInterval   string               `json:"probe_interval"`
-	SessionTTL      string               `json:"session_ttl"`
-	AllowExtraUsage bool                 `json:"allow_extra_usage"`
-	LogDecisions    bool                 `json:"log_decisions"`
-	Buckets         map[string][]string  `json:"buckets"`
-	Capacity        map[string]float64   `json:"capacity"`
-	CapacityUSD     map[string]float64   `json:"capacity_usd"`
-	DefaultUnitUSD  float64              `json:"default_unit_usd"`
-	LearnMinDelta   float64              `json:"learn_min_delta"`
-	Clients         map[string]ClientDoc `json:"clients"`
-	DefaultClient   ClientDoc            `json:"default_client"`
-	Pacing          struct {
+	SpareFactor       float64              `json:"spare_factor"`
+	MinSpare          float64              `json:"min_spare"`
+	MinRemaining      float64              `json:"min_remaining"`
+	MinHistory        string               `json:"min_history"`
+	StaleAfter        string               `json:"stale_after"`
+	ProbeInterval     string               `json:"probe_interval"`
+	SessionTTL        string               `json:"session_ttl"`
+	UsagePollInterval string               `json:"usage_poll_interval"`
+	AllowExtraUsage   bool                 `json:"allow_extra_usage"`
+	LogDecisions      bool                 `json:"log_decisions"`
+	Buckets           map[string][]string  `json:"buckets"`
+	Capacity          map[string]float64   `json:"capacity"`
+	CapacityUSD       map[string]float64   `json:"capacity_usd"`
+	DefaultUnitUSD    float64              `json:"default_unit_usd"`
+	LearnMinDelta     float64              `json:"learn_min_delta"`
+	Clients           map[string]ClientDoc `json:"clients"`
+	DefaultClient     ClientDoc            `json:"default_client"`
+	Pacing            struct {
 		Enabled  bool   `json:"enabled"`
 		Horizon  string `json:"horizon"`
 		MaxDelay string `json:"max_delay"`
@@ -75,7 +76,7 @@ func (c Config) Doc() ConfigDoc {
 	d := ConfigDoc{
 		SpareFactor: c.SpareFactor, MinSpare: c.MinSpare, MinRemaining: c.MinRemaining,
 		MinHistory: durStr(c.MinHistory), StaleAfter: durStr(c.StaleAfter), ProbeInterval: durStr(c.ProbeInterval),
-		SessionTTL: durStr(c.SessionTTL), AllowExtraUsage: c.AllowExtraUsage, LogDecisions: c.LogDecisions,
+		SessionTTL: durStr(c.SessionTTL), UsagePollInterval: durStr(c.UsagePollInterval), AllowExtraUsage: c.AllowExtraUsage, LogDecisions: c.LogDecisions,
 		Buckets: map[string][]string{}, Capacity: map[string]float64{}, CapacityUSD: map[string]float64{}, Clients: map[string]ClientDoc{},
 		DefaultUnitUSD: c.DefaultUnitUSD, LearnMinDelta: c.LearnMinDelta,
 		DefaultClient: clientDoc(c.DefaultClient),

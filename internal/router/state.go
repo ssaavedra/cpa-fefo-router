@@ -27,6 +27,8 @@ type accountInfo struct {
 	Name     string `json:"name,omitempty"`
 	Provider string `json:"provider,omitempty"`
 	AuthKind string `json:"auth_kind,omitempty"`
+	// AuthIndex is the host's runtime credential index, for host.auth.get.
+	AuthIndex string `json:"-"`
 }
 
 // matches reports whether a config identifier names this account.
@@ -97,6 +99,8 @@ type accountState struct {
 	Recent []usedSample `json:"recent,omitempty"`
 	// Learn measures the account's weekly capacity in dollars.
 	Learn capacityLearn `json:"capacity_learn"`
+	// Usage is the Claude usage report (scoped windows, extra usage).
+	Usage usagePoll `json:"usage_poll"`
 }
 
 // hourBucket aggregates one account's usage within one clock hour.

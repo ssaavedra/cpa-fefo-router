@@ -36,6 +36,7 @@ type AccountView struct {
 	SpareUSD       *float64      `json:"spare_usd,omitempty"`
 	SpareWhy       string        `json:"spare_why,omitempty"`
 	DataAge        string        `json:"data_age,omitempty"`
+	Usage          *UsageView    `json:"usage_report,omitempty"`
 }
 
 // ClientView is one client in the status report.
@@ -204,6 +205,7 @@ func (r *Router) Status(decisions int) Status {
 				ShortRemaining: e.ShortRemaining, ShortReset: e.ShortReset,
 				CapacityUSD: e.Capacity.USD, CapacitySource: e.Capacity.Source, CapacityWhy: e.Capacity.Why,
 				CapacityLearn: r.accounts[id].Learn, RemainingUSD: e.remaining(), SpareWhy: e.SpareWhy,
+				Usage: usageView(r.accounts[id].Usage),
 			}
 			if !math.IsInf(e.Expected, 0) {
 				x, s := e.Expected, e.Spare
@@ -319,6 +321,19 @@ func (s Status) Text() string {
 		fmt.Fprintf(&b, "  · %s: capacity $%.2f/week, %s (%s)\n", a.Account, a.CapacityUSD, a.CapacitySource, a.CapacityWhy)
 		if a.SpareWhy != "" {
 			fmt.Fprintf(&b, "  · %s: %s\n", a.Account, a.SpareWhy)
+		}
+		if u := a.Usage; u != nil {
+			fmt.Fprintf(&b, "  · %s: usage report %s", a.Account, fmtTime(u.PolledAt))
+			if u.ExtraUsageEnabled != nil {
+				fmt.Fprintf(&b, ", extra usage %s", map[bool]string{true: "ENABLED", false: "off"}[*u.ExtraUsageEnabled])
+			}
+			for _, sw := range u.Scoped {
+				fmt.Fprintf(&b, ", %s %.0f%% of %.0f%% allowance left", sw.Family, sw.PolledRemaining*100, sw.Allowance*100)
+			}
+			if u.Error != "" {
+				fmt.Fprintf(&b, ", poll error: %s", u.Error)
+			}
+			b.WriteString("\n")
 		}
 	}
 	b.WriteString("\nCLIENTS\n")

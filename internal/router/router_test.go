@@ -62,9 +62,9 @@ func newHarness(t *testing.T, extra string) *harness {
 	h.r.SetConfig(testConfig(t, extra))
 	h.r.mu.Lock()
 	h.r.applyHostLocked([]pluginapi.HostAuthFileEntry{
-		{ID: acctD, Name: acctD, Label: "d@example.com", Provider: "claude"},
-		{ID: acctI, Name: acctI, Label: "i@example.com", Provider: "claude"},
-		{ID: acctP, Name: acctP, Label: "p@example.com", Provider: "claude"},
+		{ID: acctD, AuthIndex: "idx-d", Name: acctD, Label: "d@example.com", Provider: "claude"},
+		{ID: acctI, AuthIndex: "idx-i", Name: acctI, Label: "i@example.com", Provider: "claude"},
+		{ID: acctP, AuthIndex: "idx-p", Name: acctP, Label: "p@example.com", Provider: "claude"},
 	}, h.now)
 	h.r.mu.Unlock()
 	return h

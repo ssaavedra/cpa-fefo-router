@@ -205,7 +205,7 @@ func (r *Router) Status(decisions int) Status {
 				ShortRemaining: e.ShortRemaining, ShortReset: e.ShortReset,
 				CapacityUSD: e.Capacity.USD, CapacitySource: e.Capacity.Source, CapacityWhy: e.Capacity.Why,
 				CapacityLearn: r.accounts[id].Learn, RemainingUSD: e.remaining(), SpareWhy: e.SpareWhy,
-				Usage: usageView(r.accounts[id].Usage),
+				Usage: r.usageViewLocked(r.accounts[id], e.Capacity.USD, now),
 			}
 			if !math.IsInf(e.Expected, 0) {
 				x, s := e.Expected, e.Spare
@@ -328,7 +328,12 @@ func (s Status) Text() string {
 				fmt.Fprintf(&b, ", extra usage %s", map[bool]string{true: "ENABLED", false: "off"}[*u.ExtraUsageEnabled])
 			}
 			for _, sw := range u.Scoped {
-				fmt.Fprintf(&b, ", %s %.0f%% of %.0f%% allowance left", sw.Family, sw.PolledRemaining*100, sw.Allowance*100)
+				if sw.Allowance > 0 {
+					fmt.Fprintf(&b, ", %s ~%.0f%% of its %.0f%% allowance left (polled %.0f%%, $%.2f since)", sw.Family, sw.EstimatedRemaining*100, sw.Allowance*100, sw.PolledRemaining*100, sw.SpentSinceUSD)
+				}
+				if sw.Blocked != "" {
+					fmt.Fprintf(&b, ", %s BLOCKED: %s", sw.Family, sw.Blocked)
+				}
 			}
 			if u.Error != "" {
 				fmt.Fprintf(&b, ", poll error: %s", u.Error)

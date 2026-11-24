@@ -127,13 +127,17 @@ type UsageView struct {
 
 // ScopedView is one model family's sub-allowance on an account.
 type ScopedView struct {
-	Family          string    `json:"family"`
-	Allowance       float64   `json:"allowance"` // share of the weekly window
-	PolledRemaining float64   `json:"polled_remaining"`
-	Reset           time.Time `json:"reset,omitzero"`
+	Family             string    `json:"family"`
+	Allowance          float64   `json:"allowance"` // share of the weekly window
+	PolledRemaining    float64   `json:"polled_remaining"`
+	SpentSinceUSD      float64   `json:"spent_since_usd"`
+	EstimatedRemaining float64   `json:"estimated_remaining"`
+	Reset              time.Time `json:"reset,omitzero"`
+	Blocked            string    `json:"blocked,omitempty"`
 }
 
-func usageView(u usagePoll) *UsageView {
+func (r *Router) usageViewLocked(st *accountState, capacityUSD float64, now time.Time) *UsageView {
+	u := st.Usage
 	if !u.Report.HasReport && u.Error == "" {
 		return nil
 	}
@@ -145,7 +149,14 @@ func usageView(u usagePoll) *UsageView {
 			v.ExtraUsageEnabled = &enabled
 		}
 		for _, w := range rep.ScopedWindows {
-			v.Scoped = append(v.Scoped, ScopedView{Family: w.Family, Allowance: w.Allowance, PolledRemaining: w.Remaining, Reset: w.ResetAt})
+			sv := r.scopedLocked(st, capacityUSD, w.Family, now)
+			v.Scoped = append(v.Scoped, ScopedView{Family: w.Family, Allowance: w.Allowance, PolledRemaining: w.Remaining,
+				SpentSinceUSD: sv.Spent, EstimatedRemaining: sv.Estimated, Reset: w.ResetAt, Blocked: sv.Block})
+		}
+		for _, fam := range r.cfg.ScopedFamilies {
+			if sv := r.scopedLocked(st, capacityUSD, fam, now); !sv.HasWindow && sv.Block != "" {
+				v.Scoped = append(v.Scoped, ScopedView{Family: fam, Blocked: sv.Block})
+			}
 		}
 	}
 	return v

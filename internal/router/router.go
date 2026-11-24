@@ -200,6 +200,9 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 			if cost.Match == pricing.Unknown {
 				b.Tainted = true
 			}
+			if st.Usage.Report.HasReport {
+				addTo(&st.Usage.SpendSince, scopeFamily(cost.Family), cost.High)
+			}
 		}
 	}
 	r.metrics.usage(client, st.Info.display(), tokens, cost.High, rec.Failed)

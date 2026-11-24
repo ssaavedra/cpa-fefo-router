@@ -258,8 +258,8 @@ function usageRows(u) {
   const rows = [el("dt", {}, "usage report"), el("dd", { class: u.error ? "err" : "" }, u.error ? "poll failed: " + u.error : "polled " + when(u.polled_at))];
   if (u.extra_usage_enabled != null) rows.push(el("dt", {}, "extra usage"), el("dd", { class: u.extra_usage_enabled ? "err" : "" }, u.extra_usage_enabled ? "enabled (paid)" : "off"));
   for (const s of u.scoped || []) {
-    const est = s.estimated_remaining ?? s.polled_remaining;
-    rows.push(el("dt", {}, s.family), el("dd", { title: s.why || "" }, `${pct(est)} of ${pct(s.allowance)} allowance left · resets ${when(s.reset)}`));
+    const text = s.allowance ? `~${pct(s.estimated_remaining)} of its ${pct(s.allowance)} allowance left (polled ${pct(s.polled_remaining)}, ${usd(s.spent_since_usd)} since) · resets ${when(s.reset)}` : "";
+    rows.push(el("dt", {}, s.family), el("dd", { class: s.blocked ? "err" : "" }, s.blocked ? (text ? text + " · " : "") + "blocked: " + s.blocked : text));
   }
   return rows;
 }
@@ -327,7 +327,8 @@ function renderDecisions() {
     const det = el("details", { open: openRows.has(rowKey), ontoggle: (e) => e.target.open ? openRows.add(rowKey) : openRows.delete(rowKey) }, el("summary", {}, d.reason),
       el("div", { class: "why" }, "policy: " + (d.policy || "")),
       el("ol", { class: "plan" }, ...(d.ranking || []).map((r) => el("li", { class: "why" }, r))),
-      (d.excluded || []).length ? el("div", { class: "why err" }, "excluded: " + d.excluded.join(" · ")) : null);
+      (d.excluded || []).length ? el("div", { class: "why err" }, "excluded: " + d.excluded.join(" · ")) : null,
+      (d.scoped_excluded || []).length ? el("div", { class: "why err" }, "excluded for this model: " + d.scoped_excluded.join(" · ")) : null);
     t.append(el("tr", {}, el("td", { class: "mono" }, new Date(d.time).toLocaleTimeString()), el("td", {}, d.client), el("td", { class: "mono" }, d.model || ""),
       el("td", {}, d.session), el("td", {}, d.outcome === "selected" ? d.account + ((d.buckets || []).length ? ` [${d.buckets.join(",")}]` : "") : el("span", { class: "err" }, d.outcome)),
       el("td", {}, d.role ? el("span", { class: "chip " + d.role }, d.role) : ""), el("td", {}, det)));

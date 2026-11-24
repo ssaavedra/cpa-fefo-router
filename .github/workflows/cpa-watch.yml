@@ -1,0 +1,60 @@
+# Weekly: when a new CPA version is out, build every release published in the
+# last 30 days against it and attach the extra .so to that release.
+name: cpa-watch
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      cpa_version: ${{ steps.plan.outputs.cpa_version }}
+      tags: ${{ steps.plan.outputs.tags }}
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Find releases missing a build for the latest CPA
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GOFLAGS: -mod=mod
+        run: |
+          cpa=$(go list -m -f '{{.Version}}' github.com/router-for-me/CLIProxyAPI/v8@latest)
+          echo "cpa_version=$cpa" >> "$GITHUB_OUTPUT"
+          since=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          tags=()
+          for tag in $(gh release list --exclude-drafts --limit 100 --json tagName,publishedAt \
+                         --jq ".[] | select(.publishedAt >= \"$since\") | .tagName"); do
+            if gh release view "$tag" --json assets --jq '.assets[].name' | grep -q -- "-cpa-$cpa-"; then
+              echo "$tag: already built against CPA $cpa"
+            else
+              echo "$tag: needs a build against CPA $cpa"
+              tags+=("$tag")
+            fi
+          done
+          json=$(printf '%s\n' "${tags[@]}" | jq -R . | jq -cs 'map(select(. != ""))')
+          echo "tags=$json" >> "$GITHUB_OUTPUT"
+          echo "Latest CPA $cpa; releases to build: $json" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.tags != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(needs.plan.outputs.tags) }}
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ matrix.tag }}
+      release_tag: ${{ matrix.tag }}
+      cpa_version: ${{ needs.plan.outputs.cpa_version }}

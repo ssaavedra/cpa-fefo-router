@@ -130,6 +130,12 @@ See [`config.example.yaml`](config.example.yaml); every key is optional.
 go test -race ./...
 ```
 
+### CI and releases
+
+- `ci` runs tests and builds the `.so` on every push to `main` and every PR, against the CPA version pinned in `go.mod` and against the latest CPA.
+- `release` runs on a `v*` tag: it tests and builds against the **latest** CPA v8 release and attaches `fefo-router-<tag>-cpa-<cpa>-linux-amd64.so` (plus `.sha256`) to the GitHub release, creating it if needed. It can also be run by hand for an existing tag and a chosen CPA version.
+- `cpa-watch` runs weekly (Monday 06:17 UTC). When a CPA version is out that a release published in the last 30 days has no build for, it builds that tag against it and adds the `.so` to the same release. Pick the file whose `cpa-` part matches your CPA.
+
 `internal/router/router_test.go` encodes the routing rules as scenarios (bucket order, spare-first, no lending without history or when home clients need it, pinned sessions, policies and overrides, wait/429, pacing, runtime config, persistence).
 
 ## License

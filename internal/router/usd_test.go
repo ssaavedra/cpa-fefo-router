@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,6 +134,52 @@ func TestCapacityIsLearnedPerWeeklyCycle(t *testing.T) {
 	burn(3, "claude-opus-5-5", 2_000_000, 0.01)
 	at(start.Add(5 * time.Hour))
 	expect(800, CapacityCurrent)
+}
+
+func TestPriceSyncAddsModelsAndKeepsTheTableOnFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	h := newHarness(t, "state_file: "+path)
+	host := newFakeHost()
+	h.r.fetcher = host
+	host.respond(modelsDevURL, 200, `{"anthropic":{"models":{"claude-zeta-1":{"family":"claude-zeta","cost":{"input":2,"output":10}}}},
+		"mistral":{"models":{"claude-zeta-1":{"cost":{"input":99,"output":99}}}}}`)
+	reset := h.now.Add(100 * time.Hour)
+	zeta := pluginapi.UsageDetail{InputTokens: 1_000_000}
+	const series = `fefo_cost_usd_total{client="pni",account="d@example.com"}`
+
+	h.refresh()
+	if p := h.r.Status(0).Pricing; p.Source != "models.dev" || p.SyncError != "" || p.SyncedAt.IsZero() {
+		t.Fatalf("after sync: %+v", p)
+	}
+	h.use("pni", acctD, "claude-zeta-1", zeta, 0.1, reset)
+	requireMetric(t, h, series, "2")
+
+	h.advance(25 * time.Hour)
+	host.respond(modelsDevURL, 500, "upstream down")
+	h.refresh()
+	if p := h.r.Status(0).Pricing; p.SyncError == "" || p.Source != "models.dev" {
+		t.Fatalf("after failed sync: %+v", p)
+	}
+	h.use("pni", acctD, "claude-zeta-1", zeta, 0.1, reset)
+	requireMetric(t, h, series, "4")
+	if !strings.Contains(h.r.Status(0).Text(), "price sync error") {
+		t.Fatal("text status does not show the sync error")
+	}
+
+	// The synced table survives a restart, with syncing off.
+	h.r.saveState()
+	h2 := newHarness(t, "state_file: "+path+"\npricing: {sync: false}")
+	h2.use("pni", acctD, "claude-zeta-1", zeta, 0.1, reset)
+	requireMetric(t, h2, series, "2")
+}
+
+func TestPriceOverridesWin(t *testing.T) {
+	h := newHarness(t, "prices: {claude-opus-5-5: {input: 10, output: 50}}")
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{InputTokens: 1_000_000}, 0.1, h.now.Add(time.Hour))
+	requireMetric(t, h, `fefo_cost_usd_total{client="pni",account="d@example.com"}`, "10")
+	if _, err := ParseConfig([]byte("prices: {x: {input: -1}}")); err == nil {
+		t.Fatal("negative price accepted")
+	}
 }
 
 func TestPinnedCapacityAndSpareInDollars(t *testing.T) {

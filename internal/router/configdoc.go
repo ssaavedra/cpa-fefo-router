@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ssaavedra/cpa-fefo-router/internal/pricing"
 )
 
 // ConfigDoc is the editable routing configuration, as JSON (which is also
@@ -35,6 +37,12 @@ type ConfigDoc struct {
 		Horizon string `json:"horizon"`
 		MaxWait string `json:"max_wait"`
 	} `json:"wait"`
+	Pricing struct {
+		Sync         bool   `json:"sync"`
+		SyncInterval string `json:"sync_interval"`
+		URL          string `json:"url"`
+	} `json:"pricing"`
+	Prices map[string]pricing.Rates `json:"prices"`
 }
 
 // ClientDoc is one client in a ConfigDoc.
@@ -86,6 +94,11 @@ func (c Config) Doc() ConfigDoc {
 	}
 	d.Pacing.Enabled, d.Pacing.Horizon, d.Pacing.MaxDelay = c.Pacing.Enabled, durStr(c.Pacing.Horizon), durStr(c.Pacing.MaxDelay)
 	d.Wait.Horizon, d.Wait.MaxWait = durStr(c.Wait.Horizon), durStr(c.Wait.MaxWait)
+	d.Pricing.Sync, d.Pricing.SyncInterval, d.Pricing.URL = c.Pricing.Sync, durStr(c.Pricing.SyncInterval), c.Pricing.URL
+	d.Prices = map[string]pricing.Rates{}
+	for k, v := range c.Prices {
+		d.Prices[k] = v
+	}
 	return d
 }
 
@@ -116,10 +129,11 @@ func (r *Router) applyOverlayLocked() {
 	if err != nil {
 		r.overlayErr = "runtime config ignored: " + err.Error()
 		r.cfg = r.base
-		return
+	} else {
+		r.overlayErr = ""
+		r.cfg = eff
 	}
-	r.overlayErr = ""
-	r.cfg = eff
+	r.rebuildPricesLocked()
 }
 
 // ConfigView is the GET /fefo/config document.

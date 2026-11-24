@@ -12,6 +12,7 @@ import (
 type metrics struct {
 	picks        map[[4]string]float64 // client, account, role, outcome
 	tokens       map[[2]string]float64 // client, account
+	costUSD      map[[2]string]float64 // client, account
 	requests     map[[3]string]float64 // client, account, failed
 	pacedSeconds map[string]float64
 	pacedCount   map[string]float64
@@ -22,6 +23,7 @@ func newMetrics() metrics {
 	return metrics{
 		picks:        map[[4]string]float64{},
 		tokens:       map[[2]string]float64{},
+		costUSD:      map[[2]string]float64{},
 		requests:     map[[3]string]float64{},
 		pacedSeconds: map[string]float64{},
 		pacedCount:   map[string]float64{},
@@ -33,8 +35,9 @@ func (m *metrics) pick(d Decision) {
 	m.picks[[4]string{d.Client, d.Account, d.Role, d.Outcome}]++
 }
 
-func (m *metrics) usage(client, account string, tokens int64, failed bool) {
+func (m *metrics) usage(client, account string, tokens int64, usd float64, failed bool) {
 	m.tokens[[2]string{client, account}] += float64(tokens)
+	m.costUSD[[2]string{client, account}] += usd
 	m.requests[[3]string{client, account, fmt.Sprint(failed)}]++
 }
 
@@ -149,6 +152,16 @@ func (r *Router) Prometheus() string {
 	for _, k := range sortedTupleKeys(r.metrics.tokens) {
 		fmt.Fprintf(&b, "fefo_tokens_total%s %s\n", lbl("client", k[0], "account", k[1]), num(r.metrics.tokens[k]))
 	}
+	counter("fefo_cost_usd_total", "API-equivalent USD served (high end of the quote for unpriced models).")
+	for _, k := range sortedTupleKeys(r.metrics.costUSD) {
+		fmt.Fprintf(&b, "fefo_cost_usd_total%s %s\n", lbl("client", k[0], "account", k[1]), num(r.metrics.costUSD[k]))
+	}
+	gauge("fefo_prices_synced_timestamp", "Unix time of the last successful models.dev price sync (0: never).")
+	synced := 0.0
+	if !r.synced.SyncedAt.IsZero() {
+		synced = float64(r.synced.SyncedAt.Unix())
+	}
+	fmt.Fprintf(&b, "fefo_prices_synced_timestamp %s\n", num(synced))
 	counter("fefo_requests_total", "Requests served.")
 	for _, k := range sortedTupleKeys(r.metrics.requests) {
 		fmt.Fprintf(&b, "fefo_requests_total%s %s\n", lbl("client", k[0], "account", k[1], "failed", k[2]), num(r.metrics.requests[k]))

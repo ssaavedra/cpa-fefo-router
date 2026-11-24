@@ -76,6 +76,7 @@ type Status struct {
 	UnknownKeys  []UnknownKey        `json:"unknown_keys,omitempty"`
 	Warnings     []string            `json:"warnings,omitempty"`
 	ConfigSource string              `json:"config_source"`
+	Pricing      PricingView         `json:"pricing"`
 	Flows        []Flow              `json:"flows"`
 }
 
@@ -177,6 +178,7 @@ func (r *Router) Status(decisions int) Status {
 		Bindings:  len(r.bindings),
 		Overrides: map[string]Override{},
 		Warnings:  r.warningsLocked(),
+		Pricing:   r.pricingViewLocked(),
 	}
 	for k, o := range r.overrides {
 		if o.active(now) {
@@ -270,6 +272,17 @@ func (s Status) Text() string {
 	}
 	if s.StateError != "" {
 		fmt.Fprintf(&b, "state file error: %s\n", s.StateError)
+	}
+	fmt.Fprintf(&b, "prices: %s, %d models", s.Pricing.Source, s.Pricing.Models)
+	if !s.Pricing.SyncedAt.IsZero() {
+		fmt.Fprintf(&b, ", synced %s", s.Pricing.SyncedAt.UTC().Format(time.RFC3339))
+	}
+	if s.Pricing.Overrides > 0 {
+		fmt.Fprintf(&b, ", %d overridden in config", s.Pricing.Overrides)
+	}
+	b.WriteString("\n")
+	if s.Pricing.SyncError != "" {
+		fmt.Fprintf(&b, "price sync error: %s\n", s.Pricing.SyncError)
 	}
 	for _, w := range s.Warnings {
 		fmt.Fprintf(&b, "WARNING: %s\n", w)

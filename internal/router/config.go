@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ssaavedra/cpa-fefo-router/internal/pricing"
 	"gopkg.in/yaml.v3"
 )
 
@@ -66,6 +67,13 @@ type WaitConfig struct {
 	MaxWait time.Duration `yaml:"max_wait" json:"max_wait"`
 }
 
+// PricingConfig controls the models.dev price sync.
+type PricingConfig struct {
+	Sync         bool          `yaml:"sync" json:"sync"`
+	SyncInterval time.Duration `yaml:"sync_interval" json:"sync_interval"`
+	URL          string        `yaml:"url" json:"url"`
+}
+
 // Config is the plugins.configs.fefo-router section.
 type Config struct {
 	Mode Mode `yaml:"mode" json:"mode"`
@@ -118,6 +126,10 @@ type Config struct {
 	Pacing PacingConfig `yaml:"pacing" json:"pacing"`
 	Wait   WaitConfig   `yaml:"wait" json:"wait"`
 
+	Pricing PricingConfig `yaml:"pricing" json:"pricing"`
+	// Prices override the price table per model id, USD per 1M tokens.
+	Prices map[string]pricing.Rates `yaml:"prices" json:"prices"`
+
 	// Host-owned keys, accepted and ignored.
 	Enabled  *bool `yaml:"enabled" json:"-"`
 	Priority *int  `yaml:"priority" json:"-"`
@@ -141,6 +153,7 @@ func DefaultConfig() Config {
 		DefaultClient:   ClientConfig{OnExhausted: PolicyAny},
 		Pacing:          PacingConfig{Enabled: true, Horizon: 2 * time.Hour, MaxDelay: 30 * time.Second},
 		Wait:            WaitConfig{Horizon: 2 * time.Hour, MaxWait: 30 * time.Second},
+		Pricing:         PricingConfig{Sync: true, SyncInterval: 24 * time.Hour, URL: "https://models.dev/api.json"},
 	}
 }
 
@@ -174,6 +187,17 @@ type rawConfig struct {
 		Horizon *string `yaml:"horizon"`
 		MaxWait *string `yaml:"max_wait"`
 	} `yaml:"wait"`
+	Pricing *struct {
+		Sync         *bool   `yaml:"sync"`
+		SyncInterval *string `yaml:"sync_interval"`
+		URL          *string `yaml:"url"`
+	} `yaml:"pricing"`
+	Prices map[string]struct {
+		Input      float64 `yaml:"input"`
+		Output     float64 `yaml:"output"`
+		CacheRead  float64 `yaml:"cache_read"`
+		CacheWrite float64 `yaml:"cache_write"`
+	} `yaml:"prices"`
 	Enabled  any `yaml:"enabled"`
 	Priority any `yaml:"priority"`
 }
@@ -249,6 +273,29 @@ func ParseConfig(raw []byte) (Config, error) {
 	if rc.Wait != nil {
 		dur("wait.horizon", rc.Wait.Horizon, &cfg.Wait.Horizon, 0)
 		dur("wait.max_wait", rc.Wait.MaxWait, &cfg.Wait.MaxWait, 0)
+	}
+	if rc.Pricing != nil {
+		if rc.Pricing.Sync != nil {
+			cfg.Pricing.Sync = *rc.Pricing.Sync
+		}
+		dur("pricing.sync_interval", rc.Pricing.SyncInterval, &cfg.Pricing.SyncInterval, time.Hour)
+		if rc.Pricing.URL != nil {
+			u := strings.TrimSpace(*rc.Pricing.URL)
+			if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+				errs = append(errs, fmt.Sprintf("pricing.url: want an http(s) URL, got %q", u))
+			} else {
+				cfg.Pricing.URL = u
+			}
+		}
+	}
+	cfg.Prices = map[string]pricing.Rates{}
+	for k, v := range rc.Prices {
+		rates := pricing.Rates{Input: v.Input, Output: v.Output, CacheRead: v.CacheRead, CacheWrite: v.CacheWrite}
+		if rates.Input < 0 || rates.Output < 0 || rates.CacheRead < 0 || rates.CacheWrite < 0 || rates.Input+rates.Output == 0 {
+			errs = append(errs, fmt.Sprintf("prices.%s: rates must be >= 0 with input or output > 0", k))
+			continue
+		}
+		cfg.Prices[strings.ToLower(strings.TrimSpace(k))] = rates
 	}
 	cfg.Buckets = map[string][]string{}
 	for name, members := range rc.Buckets {

@@ -187,7 +187,7 @@ func (h *Handler) registration(cfg Config) registration {
 				f("default_unit_usd", pluginapi.ConfigFieldTypeNumber, "USD per unit of capacity before any account of the provider is learned. Default 220."),
 				f("learn_min_delta", pluginapi.ConfigFieldTypeNumber, "Weekly share a cycle must see before its capacity estimate is used. Default 0.05."),
 				f("scoped_families", pluginapi.ConfigFieldTypeArray, "Model families with their own allowance (default [fable]): kept off accounts whose plan has none while extra usage would bill them."),
-				f("usage_poll_interval", pluginapi.ConfigFieldTypeString, "How often each Claude account's usage report (Fable allowance, extra usage) is fetched. Default 5m; 0 disables."),
+				f("usage_poll_interval", pluginapi.ConfigFieldTypeString, "How often each Claude account's usage report (Fable allowance, extra usage) is fetched, with ±30% jitter per poll. Default 5m; 0 disables."),
 				f("pricing", pluginapi.ConfigFieldTypeObject, "models.dev price sync: sync (default true), sync_interval (default 24h), url."),
 				f("prices", pluginapi.ConfigFieldTypeObject, "Per-model price overrides in USD per 1M tokens: input, output, cache_read, cache_write."),
 				f("state_file", pluginapi.ConfigFieldTypeString, "Where to persist quota and usage history."),

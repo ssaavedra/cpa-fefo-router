@@ -78,7 +78,7 @@ extra-usage setting are only in `GET https://api.anthropic.com/api/oauth/usage`
 A model family with no scoped window on an account that reports a usage report means the
 plan has no included allowance for it (Pro + Fable runs on paid credits only).
 
-The router polls this for each Claude account every `usage_poll_interval` (default 5m)
+The router polls this for each Claude account every `usage_poll_interval` (default 5m, ±30 % jitter per account and poll)
 through host callbacks: `host.auth.get` (credential JSON → `access_token`) and
 `host.http.do` (goes through CPA's proxy). Never log or persist the token. On 401/403,
 back off to the next interval.

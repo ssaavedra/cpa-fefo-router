@@ -263,22 +263,35 @@ func TestPinnedCapacityAndSpareInDollars(t *testing.T) {
 	}
 }
 
-func TestHourCarriedOverFromBeforePricingSplitsByTokens(t *testing.T) {
+// An hour carried over from before pricing is measured only by weekly delta
+// times capacity, which was inflated then. Demand leaves it out and averages
+// over the priced hours after it.
+func TestDemandSkipsHoursCarriedOverFromBeforePricing(t *testing.T) {
 	h := newHarness(t, "")
 	h.r.observeStart = h.now.Add(-24 * time.Hour)
 	reset := h.now.Add(100 * time.Hour)
 	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, 0.10, reset)
+	h.advance(time.Minute)
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, 0.60, reset)
 	h.r.mu.Lock()
 	b := h.r.hours[acctD][hourOf(h.now)]
 	b.USDLow, b.USDHigh, b.Priced = nil, nil, false
-	b.Tokens = map[string]int64{"pni": 3000}
 	h.r.mu.Unlock()
-	h.advance(time.Minute)
-	h.use("connect", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, 0.14, reset)
 
-	pni, conn := h.demand("pni"), h.demand("connect")
-	if !closeTo(pni.PerHour/conn.PerHour, 3, 1e-9) {
-		t.Fatalf("an hour recorded before pricing must split by tokens, not hand it all to the priced client: pni %+v connect %+v", pni, conn)
+	h.advance(4 * time.Hour)
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, 0.61, reset)
+	cost := h.r.prices.Cost("claude-opus-5-5", pricing.Usage{Output: 1000}).High
+
+	h.r.mu.Lock()
+	since := h.r.newPlanContextLocked("claude", h.now).since
+	h.r.mu.Unlock()
+	span := h.now.Sub(since).Hours()
+	if span <= 3 || span >= 4 {
+		t.Fatalf("demand measured from %v, want the end of the carried-over hour", since)
+	}
+	d := h.demand("pni")
+	if !closeTo(d.Week, cost/span, 1e-6) || !closeTo(d.Day, cost/span, 1e-6) {
+		t.Fatalf("demand %+v, want only the priced request $%.4f over %.2fh", d, cost, span)
 	}
 }
 

@@ -74,6 +74,9 @@ type planContext struct {
 	evals    map[string]*eval
 	order    []string // account IDs of this provider, stable order
 	demand   map[string]rateInfo
+	// since is when demand starts being measured: the observation start, or
+	// the end of the last hour carried over from before requests were priced.
+	since time.Time
 }
 
 // rateInfo is a client's demand. Dollars drive routing; tokens are display.
@@ -123,6 +126,14 @@ func (r *Router) newPlanContextLocked(provider string, now time.Time) *planConte
 	}
 	sort.Strings(ids)
 	pc.order = ids
+	pc.since = r.observeStart
+	for _, id := range ids {
+		for h, b := range r.hours[id] {
+			if end := time.Unix((h+1)*3600, 0); !b.Priced && end.After(pc.since) {
+				pc.since = end
+			}
+		}
+	}
 	type unit struct {
 		usd float64
 		why string
@@ -239,24 +250,31 @@ func (r *Router) evaluateLocked(st *accountState, now time.Time, capa capacityIn
 // A client is billed what its requests cost wherever they ran, so usage the
 // weekly window cannot see still counts: a borrowed account's first reading
 // after an idle gap (booked as outside CPA), paid extra usage (the window
-// stays full) and API-key accounts (no window). Hours without prices fall
-// back to the client's share of the weekly delta times capacity.
+// stays full) and API-key accounts (no window). Hours with traffic the
+// prices missed fall back to the client's share of the weekly delta times
+// capacity.
+//
+// Hours carried over from before pricing are left out, and the averages run
+// from the end of the last one (pc.since). Their only measure is weekly delta
+// times capacity, and both were wrong then: deltas counted every flap of
+// out-of-order readings (several times the real use) and capacity was often
+// a prior. On the hub they billed one client $4.5k for $0.9k of requests.
 func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 	key := client + "|" + onlyAccount
 	if ri, ok := pc.demand[key]; ok {
 		return ri
 	}
 	r := pc.r
-	observed := pc.now.Sub(r.observeStart)
 	ri := rateInfo{}
-	if observed < pc.cfg.MinHistory {
+	if observed := pc.now.Sub(r.observeStart); observed < pc.cfg.MinHistory {
 		ri.Why = fmt.Sprintf("only %s of history (need %s)", fmtDur(observed), fmtDur(pc.cfg.MinHistory))
 		pc.demand[key] = ri
 		return ri
 	}
+	observed := math.Max(0, pc.now.Sub(pc.since).Hours())
 	nowH := hourOf(pc.now)
 	sum := func(window time.Duration) (usd, tokens float64) {
-		eff := math.Min(window.Hours(), observed.Hours())
+		eff := math.Min(window.Hours(), observed)
 		from := nowH - int64(math.Ceil(eff)) + 1
 		for _, id := range pc.order {
 			if onlyAccount != "" && id != onlyAccount {
@@ -268,7 +286,7 @@ func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 				home[c] = true
 			}
 			for h, b := range r.hours[id] {
-				if h >= from && h <= nowH {
+				if h >= from && h <= nowH && b.Priced {
 					usd += b.billed(client, home, e.Capacity.USD)
 					tokens += float64(b.Tokens[client])
 				}

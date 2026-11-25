@@ -30,16 +30,16 @@ type ProjectionView struct {
 	SpareUSD     float64 `json:"spare_usd"`     // positive spare, lendable now
 	// Demand is the pool's dollars per hour: every client plus outside CPA.
 	DemandKnown      bool    `json:"demand_known"`
-	DemandUSDPerHour float64 `json:"demand_usd_per_hour,omitempty"`
+	DemandUSDPerHour float64 `json:"demand_usd_per_hour"`
 	Why              string  `json:"why,omitempty"`
 	// Over HorizonHours, serving demand FEFO from the pool.
 	HorizonHours float64   `json:"horizon_hours"`
-	UseUSD       float64   `json:"use_usd,omitempty"`       // demand served
-	WastedUSD    float64   `json:"wasted_usd,omitempty"`    // quota that resets unused
-	ShortfallUSD float64   `json:"shortfall_usd,omitempty"` // demand nothing could serve
-	DryAt        time.Time `json:"dry_at,omitzero"`         // first hour demand went unserved
+	UseUSD       float64   `json:"use_usd"`         // demand served
+	WastedUSD    float64   `json:"wasted_usd"`      // quota that resets unused
+	ShortfallUSD float64   `json:"shortfall_usd"`   // demand nothing could serve
+	DryAt        time.Time `json:"dry_at,omitzero"` // first hour demand went unserved
 	// Utilisation is demand over a week against weekly capacity.
-	Utilisation float64 `json:"utilisation,omitempty"`
+	Utilisation float64 `json:"utilisation"`
 }
 
 // poolAccount is one account's quota as the pool simulation sees it.

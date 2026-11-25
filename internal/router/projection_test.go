@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -67,5 +68,18 @@ func TestProjectionWaitsForDemand(t *testing.T) {
 	p := h.r.Status(0).Projections[0]
 	if p.DemandKnown || !strings.Contains(p.Why, "demand unknown") || p.Accounts != 3 {
 		t.Fatalf("projection %+v", p)
+	}
+}
+
+// The UI formats every projection amount, so zeros must be sent, not omitted.
+func TestProjectionSendsZeroAmounts(t *testing.T) {
+	raw, err := json.Marshal(ProjectionView{DemandKnown: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"demand_usd_per_hour", "use_usd", "wasted_usd", "shortfall_usd", "utilisation"} {
+		if !strings.Contains(string(raw), `"`+k+`":0`) {
+			t.Fatalf("%s missing from %s", k, raw)
+		}
 	}
 }

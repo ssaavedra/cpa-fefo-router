@@ -189,9 +189,9 @@ function el(tag, attrs, ...kids) {
   return n;
 }
 function toast(msg, bad) { const t = $("toast"); t.textContent = msg; t.style.color = bad ? "var(--bad)" : ""; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500); }
-function pct(x) { return (x * 100).toFixed(0) + "%"; }
-function usd(x) { return "$" + (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2)); }
-function tok(x) { return x >= 1e9 ? (x / 1e9).toFixed(2) + "G" : x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? (x / 1e3).toFixed(1) + "k" : Math.round(x).toString(); }
+function pct(x) { return x == null || isNaN(x) ? "?" : (x * 100).toFixed(0) + "%"; }
+function usd(x) { return x == null || isNaN(x) ? "?" : "$" + (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2)); }
+function tok(x) { return x == null || isNaN(x) ? "?" : x >= 1e9 ? (x / 1e9).toFixed(2) + "G" : x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? (x / 1e3).toFixed(1) + "k" : Math.round(x).toString(); }
 const UNITS_STORE = "fefo-router:units";
 function units() { try { return localStorage.getItem(UNITS_STORE) || status?.display_units || "usd"; } catch { return status?.display_units || "usd"; } }
 $("units").onchange = () => { try { localStorage.setItem(UNITS_STORE, $("units").value); } catch {} if (status) { renderOverview(); renderTraffic(); } };

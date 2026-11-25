@@ -155,8 +155,10 @@ type ConfigView struct {
 	// Backups are config.yaml sections replaced from the browser, newest
 	// first, for restoring.
 	Backups []configBackup `json:"backups"`
-	// Section is the config.yaml section a promote request asked for.
-	Section json.RawMessage `json:"section,omitempty"`
+	// ConfigYAML and Section answer promote and restore: the config.yaml to
+	// write and the plugin section in it.
+	ConfigYAML string          `json:"config_yaml,omitempty"`
+	Section    json.RawMessage `json:"section,omitempty"`
 }
 
 // configBackup is a config.yaml section as it was before the browser
@@ -210,17 +212,23 @@ type configRequest struct {
 	// Force saves even if a wait/fail client would have no account.
 	Force bool `json:"force"`
 
-	// The browser writes config.yaml itself, through CPA's plugin config
-	// API, in three steps: promote (or backup), then CPA's PUT, then adopt.
+	// The browser writes config.yaml itself, with CPA's GET and PUT
+	// /v0/management/config.yaml (management proxies such as CPA Manager
+	// Plus pass those through but not CPA's plugin config API): it sends the
+	// file here with promote or restore, PUTs the answer, then adopts.
 
-	// Promote answers with the config.yaml section that makes the runtime
-	// config permanent: Current (the section config.yaml has now) with its
-	// routing keys replaced by the runtime config. Current is kept as a backup.
+	// Promote answers with ConfigYAML whose plugin section makes the runtime
+	// config permanent: the current section with its routing keys replaced
+	// by the runtime config. The current section is kept as a backup.
 	Promote *struct {
-		Current json.RawMessage `json:"current"`
+		ConfigYAML string `json:"config_yaml"`
 	} `json:"promote"`
-	// Backup keeps a config.yaml section that is about to be replaced.
-	Backup json.RawMessage `json:"backup"`
+	// Restore answers with ConfigYAML whose plugin section is the backup
+	// taken at At. The current section is kept as a backup.
+	Restore *struct {
+		At         time.Time `json:"at"`
+		ConfigYAML string    `json:"config_yaml"`
+	} `json:"restore"`
 	// Adopt installs a section just written to config.yaml without waiting
 	// for CPA to pass it on. DropOverlay also ends the runtime config, which
 	// the new section now holds.
@@ -239,16 +247,9 @@ func (r *Router) UpdateConfig(body []byte) (ConfigView, error) {
 	}
 	switch {
 	case req.Promote != nil:
-		return r.promoteConfig(req.Promote.Current, req.Note)
-	case len(req.Backup) > 0:
-		if _, err := sectionObject(req.Backup); err != nil {
-			return ConfigView{}, err
-		}
-		r.mu.Lock()
-		r.backupSectionLocked(req.Backup, req.Note)
-		r.mu.Unlock()
-		r.saveState()
-		return r.ConfigView(), nil
+		return r.promoteConfig(req.Promote.ConfigYAML)
+	case req.Restore != nil:
+		return r.restoreConfig(req.Restore.At, req.Restore.ConfigYAML)
 	case req.Adopt != nil:
 		return r.adoptSection(req.Adopt.Section, req.Adopt.DropOverlay)
 	}
@@ -332,10 +333,14 @@ func (r *Router) backupSectionLocked(section json.RawMessage, note string) {
 	r.dirty = true
 }
 
-// promoteConfig builds the section that makes the runtime config permanent
-// and backs up the current one. Keys the runtime config does not own
+// promoteConfig makes the runtime config permanent in configYAML and backs
+// up the section it replaces. Keys the runtime config does not own
 // (enabled, priority, mode, state_file, refresh_interval) are kept.
-func (r *Router) promoteConfig(current json.RawMessage, note string) (ConfigView, error) {
+func (r *Router) promoteConfig(configYAML string) (ConfigView, error) {
+	_, current, err := spliceSection(configYAML, nil)
+	if err != nil {
+		return ConfigView{}, err
+	}
 	obj, err := sectionObject(current)
 	if err != nil {
 		return ConfigView{}, err
@@ -358,18 +363,46 @@ func (r *Router) promoteConfig(current json.RawMessage, note string) (ConfigView
 	if err != nil {
 		return ConfigView{}, err
 	}
-	if _, err := ParseConfig(section); err != nil {
-		return ConfigView{}, fmt.Errorf("permanent config would be invalid: %w", err)
+	return r.replaceSection(configYAML, current, section, "before making the runtime config permanent")
+}
+
+// restoreConfig puts the backup taken at `at` back into configYAML and backs
+// up the section it replaces.
+func (r *Router) restoreConfig(at time.Time, configYAML string) (ConfigView, error) {
+	r.mu.Lock()
+	var section json.RawMessage
+	for _, b := range r.configBackups {
+		if b.At.Equal(at) {
+			section = b.Section
+		}
 	}
-	if note == "" {
-		note = "before making the runtime config permanent"
+	r.mu.Unlock()
+	if section == nil {
+		return ConfigView{}, fmt.Errorf("no backup from %s", at.Format(time.RFC3339))
+	}
+	_, current, err := spliceSection(configYAML, nil)
+	if err != nil {
+		return ConfigView{}, err
+	}
+	return r.replaceSection(configYAML, current, section, "before restoring the backup from "+at.UTC().Format(time.RFC3339))
+}
+
+// replaceSection validates section, backs up current and answers with
+// configYAML holding section.
+func (r *Router) replaceSection(configYAML string, current, section json.RawMessage, note string) (ConfigView, error) {
+	if _, err := ParseConfig(section); err != nil {
+		return ConfigView{}, fmt.Errorf("the new config.yaml section would be invalid: %w", err)
+	}
+	out, _, err := spliceSection(configYAML, section)
+	if err != nil {
+		return ConfigView{}, err
 	}
 	r.mu.Lock()
 	r.backupSectionLocked(current, note)
 	r.mu.Unlock()
 	r.saveState()
 	v := r.ConfigView()
-	v.Section = section
+	v.ConfigYAML, v.Section = out, section
 	return v, nil
 }
 

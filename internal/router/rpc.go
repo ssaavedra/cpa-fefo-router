@@ -149,7 +149,7 @@ func (h *Handler) dispatch(method string, request []byte) ([]byte, error) {
 				{Method: http.MethodGet, Path: pathMetrics, Description: "Prometheus metrics."},
 				{Method: http.MethodPost, Path: pathOverride, Description: `Temporary override: {"client":"c","policy":"any","for":"2h"}, {"spare_factor":2,"for":"1h"} or {"client":"c","clear":true}.`},
 				{Method: http.MethodGet, Path: pathConfig, Description: "Effective routing config, config.yaml section and runtime config."},
-				{Method: http.MethodPost, Path: pathConfig, Description: `Set runtime config: {"config":{...}}, {"yaml":"..."}, {"assign_key":{"scope":"…","client":"c"}}, {"revert":true}; config.yaml: {"promote":{"current":{…}}}, {"backup":{…}}, {"adopt":{"section":{…},"drop_overlay":true}}.`},
+				{Method: http.MethodPost, Path: pathConfig, Description: `Set runtime config: {"config":{...}}, {"yaml":"..."}, {"assign_key":{"scope":"…","client":"c"}}, {"revert":true}; config.yaml: {"promote":{"config_yaml":"…"}}, {"restore":{"at":"…","config_yaml":"…"}}, {"adopt":{"section":{…},"drop_overlay":true}}.`},
 			},
 			Resources: []resourceRoute{{Path: "ui", Menu: "FEFO Router", Description: "Where requests go and why; overrides and routing config."}},
 		})

@@ -501,25 +501,34 @@ $("cfgRevert").onclick = async () => {
   try { cfgView = await api("/config", { revert: true }); dirty = false; renderConfig(true); toast("Reverted to config.yaml"); refresh(); } catch (e) { toast(e.message, true); }
 };
 
-// config.yaml is written through CPA's own plugin config API, so CPA keeps
-// the rest of the file (and its comments) and validates the result.
-const CPA_PLUGIN_CONFIG = "/v0/management/plugins/fefo-router/config";
-async function cpaPluginConfig(section) {
+// config.yaml is read and written with CPA's GET/PUT /v0/management/config.yaml
+// (management proxies such as CPA Manager Plus pass those through, unlike
+// CPA's plugin config API). The plugin splices its own section in, so the
+// rest of the file and its comments stay as they are.
+const CPA_CONFIG_YAML = "/v0/management/config.yaml";
+async function cpaConfigYAML(text) {
   const opts = { headers: { Authorization: "Bearer " + key } };
-  if (section !== undefined) { opts.method = "PUT"; opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(section); }
-  const res = await fetch(CPA_PLUGIN_CONFIG, opts);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error("CPA: " + (data.message || data.error || res.statusText));
-  return data;
+  if (text !== undefined) { opts.method = "PUT"; opts.headers["Content-Type"] = "application/yaml"; opts.body = text; }
+  const res = await fetch(CPA_CONFIG_YAML, opts);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error("CPA: " + (data.message || data.error || res.statusText));
+  }
+  return text === undefined ? res.text() : res.json().catch(() => ({}));
+}
+// writeConfigYAML sends config.yaml to the plugin (promote or restore),
+// writes the answer back through CPA and has the plugin adopt it.
+async function writeConfigYAML(request, dropOverlay) {
+  const configYAML = await cpaConfigYAML();
+  const v = await api("/config", request(configYAML));
+  await cpaConfigYAML(v.config_yaml);
+  return api("/config", { adopt: { section: v.section, drop_overlay: dropOverlay } });
 }
 $("cfgPromote").onclick = async () => {
   if (dirty && !confirm("You have unsaved edits; they will not be included. Continue?")) return;
   if (!confirm("Write the runtime config into config.yaml and stop using the runtime config? The current config.yaml section is kept as a backup.")) return;
   try {
-    const current = await cpaPluginConfig();
-    const v = await api("/config", { promote: { current } });
-    await cpaPluginConfig(v.section);
-    cfgView = await api("/config", { adopt: { section: v.section, drop_overlay: true } });
+    cfgView = await writeConfigYAML((y) => ({ promote: { config_yaml: y } }), true);
     dirty = false; renderConfig(true); toast("config.yaml updated; runtime config ended"); refresh();
   } catch (e) { $("cfgErr").textContent = e.message; toast("Not made permanent", true); }
 };
@@ -527,10 +536,7 @@ async function restoreBackup(b) {
   const still = cfgView.source === "runtime" ? "\n\nThe runtime config keeps winning until you revert it." : "";
   if (!confirm(`Replace the config.yaml section with the backup from ${new Date(b.at).toLocaleString()}? The current section is backed up first.` + still)) return;
   try {
-    const current = await cpaPluginConfig();
-    await api("/config", { backup: current, note: "before restoring the backup from " + b.at });
-    await cpaPluginConfig(b.section);
-    cfgView = await api("/config", { adopt: { section: b.section } });
+    cfgView = await writeConfigYAML((y) => ({ restore: { at: b.at, config_yaml: y } }), false);
     dirty = false; renderConfig(true); toast("Backup restored to config.yaml"); refresh();
   } catch (e) { $("cfgErr").textContent = e.message; toast("Not restored", true); }
 }

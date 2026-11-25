@@ -93,12 +93,14 @@ Other models on the same account are not affected. Excluded accounts are dropped
 
 | Where | What |
 | --- | --- |
-| CPA management panel → plugin menu → **FEFO Router** (`/v0/resource/plugins/fefo-router/ui`) | Overview of accounts (windows, resets, expected use, spare, why), each client's live plan, traffic matrix (client → account → role), recent decisions with full ranking and exclusions, overrides, config editor, unknown keys. Uses the panel's stored management key, or asks for it. |
+| CPA management panel → plugin menu → **FEFO Router** (`/v0/resource/plugins/fefo-router/ui`) | Overview: a pool projection per provider, then accounts (windows, resets, expected use, spare, why), each client's live plan, traffic matrix (client → account → role), recent decisions with full ranking and exclusions, overrides, config editor, unknown keys. Uses the panel's stored management key, or asks for it. |
 | `GET /v0/management/fefo/status` (`?format=text`, `?units=usd\|tokens`, `?decisions=N`) | The same data as JSON (dollars and tokens) or a plain-text table in the chosen units. The UI has the same toggle. |
 | `GET /v0/management/fefo/metrics` | Prometheus, below. |
 | CPA log | One line per decision: `fefo selected client=laptop claude → me@work.example [own] bucket work, weekly 63% left, resets Thu 10:00Z`, plus pacing lines. |
 
 All management routes require CPA's management key.
+
+The pool projection treats all of a provider's accounts as one pool: total demand (every client's dollars per hour plus usage outside CPA) is served hour by hour for the next week from the account that resets soonest, so each account's spare is lent before it expires. It reports pool capacity, remaining, home clients' expected use and spare now, plus over the week the dollars used, the dollars that reset unused and any shortfall with the hour the pool runs dry. It is a best case: clients that never borrow, or policies that keep a client off an account, can leave quota unused that the projection spends. Accounts with no weekly window yet are left out. In token units the amounts are shown as shares of the pool's weekly capacity.
 
 Metrics (dollars are API-equivalent USD):
 

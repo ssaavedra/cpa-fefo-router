@@ -91,6 +91,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
   <div id="warnings"></div>
 
   <section id="overview" class="on">
+    <h2>Projection (all accounts as one pool, spare lent)</h2>
+    <div class="grid" id="projections"></div>
     <h2>Accounts</h2>
     <div class="grid" id="accounts"></div>
     <h2>Clients and their current plan</h2>
@@ -281,6 +283,33 @@ function renderOverview() {
   if (status.state_error) w.append(el("div", { class: "warn" }, "State file: " + status.state_error));
   if (status.pricing?.sync_error) w.append(el("div", { class: "warn" }, "Price sync (keeping the " + status.pricing.source + " table): " + status.pricing.sync_error));
 
+  const pr = $("projections"); pr.replaceChildren();
+  for (const x of status.projections || []) {
+    const inTok = units() === "tokens", share = (v) => x.capacity_usd ? pct(v / x.capacity_usd) : "?";
+    const amt = inTok ? share : usd;
+    const rows = [
+      el("dt", {}, "capacity"), el("dd", {}, `${inTok ? "100% of a week" : usd(x.capacity_usd) + "/week"} over ${x.accounts} account${x.accounts === 1 ? "" : "s"}`),
+      el("dt", {}, "remaining"), el("dd", {}, inTok ? share(x.remaining_usd) + " of a week" : `${usd(x.remaining_usd)} (${share(x.remaining_usd)} of a week)`),
+      el("dt", {}, "home expected"), el("dd", {}, amt(x.expected_usd)),
+      el("dt", {}, "spare now"), el("dd", {}, amt(x.spare_usd)),
+    ];
+    if (x.demand_known) {
+      const days = x.horizon_hours / 24;
+      rows.push(
+        inTok ? null : el("dt", {}, "demand"), inTok ? null : el("dd", {}, `${usd(x.demand_usd_per_hour)}/h · ${usd(x.demand_usd_per_hour * 168)}/week`),
+        el("dt", {}, "utilisation"), el("dd", { class: x.utilisation > 1 ? "err" : "" }, pct(x.utilisation) + " of weekly capacity"),
+        el("dt", {}, `next ${days}d use`), el("dd", {}, amt(x.use_usd)),
+        el("dt", {}, "resets unused"), el("dd", {}, amt(x.wasted_usd)),
+        el("dt", {}, "shortfall"), el("dd", { class: x.shortfall_usd > 0 ? "err" : "" }, x.shortfall_usd > 0 ? `${amt(x.shortfall_usd)} · runs dry ${when(x.dry_at)} (in ${until(x.dry_at)})` : "none"));
+    }
+    const fill = x.demand_known && x.capacity_usd ? Math.min(1, x.utilisation) : null;
+    pr.append(el("div", { class: "card" },
+      el("h3", {}, providerIcon(x.provider), x.provider, x.demand_known ? (x.shortfall_usd > 0 ? el("span", { class: "chip bad" }, "short") : el("span", { class: "chip ok" }, "covered")) : el("span", { class: "chip" }, "demand unknown")),
+      fill == null ? null : el("div", { class: "meta" }, `demand uses ${pct(x.utilisation)} of the pool's week`), fill == null ? null : bar(1 - fill),
+      el("dl", { class: "kv" }, ...rows),
+      x.excluded?.length ? el("div", { class: "why" }, "left out (no weekly window yet): " + x.excluded.join(", ")) : null,
+      x.why ? el("div", { class: "why" }, x.why) : null));
+  }
   const a = $("accounts"); a.replaceChildren();
   for (const x of status.accounts || []) {
     const state = !x.usable ? el("span", { class: "chip bad" }, "blocked") : x.no_data ? el("span", { class: "chip" }, "no data yet") : el("span", { class: "chip ok" }, "usable");

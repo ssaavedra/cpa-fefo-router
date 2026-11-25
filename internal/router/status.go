@@ -82,6 +82,8 @@ type Status struct {
 	ConfigSource string              `json:"config_source"`
 	Pricing      PricingView         `json:"pricing"`
 	Flows        []Flow              `json:"flows"`
+	// Projections project each provider's pool, spare lending included.
+	Projections []ProjectionView `json:"projections"`
 	// DisplayUnits is what Text shows: "usd" or "tokens". JSON carries both.
 	DisplayUnits string `json:"display_units"`
 }
@@ -268,7 +270,8 @@ func (r *Router) Status(decisions int) Status {
 	for _, u := range st.UnknownKeys {
 		unknownAliases = append(unknownAliases, u.Alias)
 	}
-	for _, c := range append(clients, unknownAliases...) {
+	senders := append(append([]string{}, clients...), unknownAliases...)
+	for _, c := range senders {
 		cc := r.clientConfigLocked(c)
 		pol, src := r.policyLocked(c, now)
 		cv := ClientView{Client: c, Buckets: cc.Buckets, Policy: string(pol) + " (" + src + ")", Borrow: cc.BorrowEnabled(),
@@ -282,6 +285,9 @@ func (r *Router) Status(decisions int) Status {
 		}
 		st.Clients = append(st.Clients, cv)
 	}
+	for _, p := range sortedKeys(pcs) {
+		st.Projections = append(st.Projections, pcs[p].projection(senders))
+	}
 	n := len(r.decisions)
 	if decisions > n {
 		decisions = n
@@ -292,6 +298,9 @@ func (r *Router) Status(decisions int) Status {
 	}
 	if st.Clients == nil {
 		st.Clients = []ClientView{}
+	}
+	if st.Projections == nil {
+		st.Projections = []ProjectionView{}
 	}
 	return st
 }
@@ -323,6 +332,12 @@ func (s Status) Text() string {
 	}
 	for k, o := range s.Overrides {
 		fmt.Fprintf(&b, "override %s: policy=%s spare_factor=%g until %s %s\n", k, o.Policy, o.SpareFactor, fmtTime(o.Until), o.Note)
+	}
+	if len(s.Projections) > 0 {
+		b.WriteString("\nPROJECTION (all accounts as one pool, spare lent, soonest reset first)\n")
+		for _, p := range s.Projections {
+			b.WriteString("  " + p.text(tokens) + "\n")
+		}
 	}
 	b.WriteString("\nACCOUNTS\n")
 	tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)

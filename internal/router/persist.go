@@ -28,6 +28,10 @@ type persisted struct {
 	OverlayNote  string                           `json:"runtime_config_note,omitempty"`
 	// Prices is the last models.dev sync.
 	Prices *pricing.Table `json:"prices,omitempty"`
+	// MonotonicDelta marks state recorded after weekly readings stopped
+	// flapping into the delta. Older learned capacities counted every flap
+	// and are discarded on load.
+	MonotonicDelta bool `json:"monotonic_delta,omitempty"`
 }
 
 func (r *Router) loadState(path string) {
@@ -57,6 +61,9 @@ func (r *Router) loadState(path string) {
 	for id, st := range p.Accounts {
 		if st == nil {
 			continue
+		}
+		if !p.MonotonicDelta {
+			st.Learn = capacityLearn{Folded: st.Learn.Folded}
 		}
 		if cur, ok := r.accounts[id]; ok {
 			// Live data observed before the load wins; keep history from disk.
@@ -117,7 +124,7 @@ func (r *Router) saveState() {
 		return
 	}
 	p := persisted{
-		Version: stateVersion, SavedAt: r.now(), ObserveStart: r.observeStart,
+		Version: stateVersion, SavedAt: r.now(), ObserveStart: r.observeStart, MonotonicDelta: true,
 		Accounts: r.accounts, Hours: r.hours, Scopes: r.scopes, Overrides: r.overrides,
 		Overlay: r.overlay, OverlayAt: r.overlayAt, OverlayNote: r.overlayNote,
 	}

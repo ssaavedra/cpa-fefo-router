@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -331,4 +332,69 @@ func TestDemandBillsUsageTheWeeklyWindowMisses(t *testing.T) {
 			t.Fatalf("connect demand %+v, want $%.2f/24h", got, usd)
 		}
 	})
+}
+
+// Concurrent responses arrive out of order and flap between neighbouring
+// percentages; only real increases are weekly use.
+func TestFlappingWeeklyReadingsCountOnce(t *testing.T) {
+	h := newHarness(t, "")
+	reset := h.now.Add(100 * time.Hour)
+	for _, used := range []float64{0.65, 0.66, 0.65, 0.66, 0.65, 0.66, 0.67, 0.66, 0.67} {
+		h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{OutputTokens: 1000}, used, reset)
+		h.advance(time.Second)
+	}
+	h.r.mu.Lock()
+	b := h.r.hours[acctD][hourOf(h.now)]
+	h.r.mu.Unlock()
+	if !closeTo(b.Delta, 0.02, 1e-9) {
+		t.Fatalf("delta %.3f, want 0.02", b.Delta)
+	}
+}
+
+// Capacity learned before flapping was fixed is overcounted; a restart
+// forgets it and learns again.
+func TestStateFromBeforeMonotonicDeltaForgetsLearnedCapacity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	h := newHarness(t, "state_file: "+path)
+	h.use("pni", acctD, "claude-opus-5-5", pluginapi.UsageDetail{}, 0.1, h.now.Add(100*time.Hour))
+	h.r.mu.Lock()
+	h.r.accounts[acctD].Learn = capacityLearn{Folded: 7, Current: learnCycle{USD: 100, Delta: 2.2}}
+	h.r.dirty = true
+	h.r.mu.Unlock()
+	h.r.saveState()
+
+	h2 := newHarness(t, "state_file: "+path)
+	if l := h2.r.accounts[acctD].Learn; l.Current.Delta != 2.2 {
+		t.Fatalf("state written with monotonic deltas must keep its learning: %+v", l)
+	}
+
+	var raw map[string]any
+	data, _ := os.ReadFile(path)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	delete(raw, "monotonic_delta")
+	data, _ = json.Marshal(raw)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h3 := newHarness(t, "state_file: "+path)
+	if l := h3.r.accounts[acctD].Learn; l.Current.Delta != 0 || l.Current.USD != 0 || l.Folded != 7 {
+		t.Fatalf("old state's learning should be dropped, folding kept: %+v", l)
+	}
+}
+
+// Expected use is capped at what the account has left: more cannot run there.
+func TestExpectedIsCappedAtRemaining(t *testing.T) {
+	h := newHarness(t, "")
+	start := h.now
+	dReset, iReset, pReset := start.Add(80*time.Hour), start.Add(11*time.Hour), start.Add(60*time.Hour)
+	h.buildHistory(7, 0.05, 0.01, dReset, iReset, pReset, 0.5, 0.3, 0.2) // d ends 85% used
+	h.r.mu.Lock()
+	pc := h.r.newPlanContextLocked("claude", h.now)
+	d := pc.evals[acctD]
+	h.r.mu.Unlock()
+	if d.Expected != d.remaining() || !strings.Contains(d.SpareWhy, "more than is left") {
+		t.Fatalf("expected %.2f remaining %.2f (%s)", d.Expected, d.remaining(), d.SpareWhy)
+	}
 }

@@ -133,9 +133,14 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 		}
 		d.Ranking = append(d.Ranking, fmt.Sprintf("%s %s: %s%s", p.Role, pc.evals[p.ID].Name, p.Why, mark))
 	}
+	limited := map[string]bool{}
 	for _, id := range pc.order {
-		if e := pc.evals[id]; !e.Usable {
+		e := pc.evals[id]
+		if !e.Usable {
 			d.Excluded = append(d.Excluded, e.Name+": "+e.Block)
+		} else if why := pc.lendBlock(e, client); why != "" {
+			limited[id] = true
+			d.Excluded = append(d.Excluded, e.Name+": "+why)
 		}
 	}
 
@@ -177,7 +182,7 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 			}
 			// Spare hysteresis first: a borrowed account keeps its sessions while
 			// spare > 0, even if it dropped below min_spare for new ones.
-			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 && gated[b.AuthID] == "" && !contains(r.ownIDsLocked(pc, client), b.AuthID) {
+			if e := pc.evals[b.AuthID]; e.Usable && !e.NoData && e.Spare > 0 && gated[b.AuthID] == "" && pc.lendBlock(e, client) == "" && !contains(r.ownIDsLocked(pc, client), b.AuthID) {
 				return choose(b.AuthID, RoleSpare, fmt.Sprintf("pinned: spare $%.2f still above 0", e.Spare))
 			}
 			for _, p := range order {
@@ -197,11 +202,12 @@ func (r *Router) pickLocked(req pluginapi.SchedulerPickRequest, now time.Time) (
 		}
 	}
 
-	// Everything offered is blocked in our view (exhausted, cooling down, or
-	// only serving from paid extra usage). Never let CPA pick one of those.
+	// Everything offered is blocked in our view (exhausted, cooling down, only
+	// serving from paid extra usage, or past its bucket's lending limit).
+	// Never let CPA pick one of those.
 	var blocked []string
 	for id := range cand {
-		if e := pc.evals[id]; (e != nil && !e.Usable) || gated[id] != "" {
+		if e := pc.evals[id]; (e != nil && !e.Usable) || gated[id] != "" || limited[id] {
 			blocked = append(blocked, id)
 		}
 	}

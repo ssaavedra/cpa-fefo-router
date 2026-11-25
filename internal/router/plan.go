@@ -77,6 +77,9 @@ type planContext struct {
 	// since is when demand starts being measured: the observation start, or
 	// the end of the last hour carried over from before requests were priced.
 	since time.Time
+	// limits are the bucket lending limits, built on first use.
+	limits      []*lendLimit
+	limitsBuilt bool
 }
 
 // rateInfo is a client's demand. Dollars drive routing; tokens are display.
@@ -459,18 +462,28 @@ func (pc *planContext) plan(client string, minSpare float64) ([]planEntry, Polic
 		if !isOwn[id] && !cc.BorrowEnabled() {
 			continue
 		}
+		if pc.lendBlock(e, client) != "" {
+			continue
+		}
 		if e.Spare > minSpare*e.Capacity.USD {
 			spare = append(spare, e)
 		}
 	}
 	sortByReset(spare)
+	// limitNote tells how much a bucket lending limit still lets e lend.
+	limitNote := func(e *eval) string {
+		if _, room, limited := pc.lendCheck(e, client); limited {
+			return fmt.Sprintf(", bucket limit lets it lend $%.2f more", room)
+		}
+		return ""
+	}
 	for _, e := range spare {
 		if firstOwn == nil || (!e.WeeklyReset.IsZero() && e.WeeklyReset.Before(firstOwn.WeeklyReset)) {
 			whose := "other bucket"
 			if isOwn[e.ID] {
 				whose = "own later bucket"
 			}
-			add(e, RoleSpareFirst, fmt.Sprintf("%s spare $%.2f expires %s, before first own account", whose, e.Spare, fmtTime(e.WeeklyReset)))
+			add(e, RoleSpareFirst, fmt.Sprintf("%s spare $%.2f expires %s, before first own account%s", whose, e.Spare, fmtTime(e.WeeklyReset), limitNote(e)))
 		}
 	}
 	for i, e := range own {
@@ -487,13 +500,14 @@ func (pc *planContext) plan(client string, minSpare float64) ([]planEntry, Polic
 		add(e, RoleOwn, why)
 	}
 	for _, e := range spare {
-		add(e, RoleSpare, fmt.Sprintf("spare $%.2f, resets %s", e.Spare, fmtTime(e.WeeklyReset)))
+		add(e, RoleSpare, fmt.Sprintf("spare $%.2f, resets %s%s", e.Spare, fmtTime(e.WeeklyReset), limitNote(e)))
 	}
 	if policy == PolicyAny {
 		var rest []*eval
 		for _, id := range pc.order {
+			// Bucket lending limits hold here too: a limit caps every loan.
 			e := pc.evals[id]
-			if e.Usable {
+			if e.Usable && pc.lendBlock(e, client) == "" {
 				rest = append(rest, e)
 			}
 		}

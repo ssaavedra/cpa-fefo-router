@@ -122,8 +122,10 @@ back off to the next interval.
 
 ### 4. Display units
 
-- Status JSON carries both $ and tokens. `GET .../status?units=usd|tokens` and the UI toggle
-  choose which the text/UI shows; config `display_units` sets the default (`usd`).
+- Status JSON carries both $ and tokens. `GET .../status?units=usd|tokens|pct_relative|pct_absolute`
+  and the UI toggle choose which the text/UI shows; config `display_units` sets the default
+  (`usd`). The percent units show dollars as a share of a week: of the thing shown
+  (`pct_relative`) or of the provider's largest account (`pct_absolute`).
 - Metrics: `fefo_cost_usd_total{client,account}` next to `fefo_tokens_total`; account gauges
   in $ (`fefo_account_capacity_usd`, `_remaining_usd`, `_expected_usd`, `_spare_usd`,
   `fefo_account_scoped_remaining{window}`), `fefo_client_demand_per_hour{unit="usd"|"tokens"}`,

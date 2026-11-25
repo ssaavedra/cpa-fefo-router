@@ -116,8 +116,10 @@ func (r *Router) Prometheus() string {
 	for _, st := range r.accounts {
 		providers[st.Info.Provider] = true
 	}
+	var limits []LendLimitView
 	for _, p := range sortedKeys(providers) {
 		pc := r.newPlanContextLocked(p, now)
+		limits = append(limits, pc.lendLimitViews()...)
 		for _, id := range pc.order {
 			rows = append(rows, row{pc, pc.evals[id]})
 		}
@@ -165,6 +167,13 @@ func (r *Router) Prometheus() string {
 			v = 1
 		}
 		fmt.Fprintf(&b, "fefo_account_usable%s %s\n", lbl("account", x.e.Name, "provider", x.e.Provider, "reason", x.e.Block), num(v))
+	}
+	gauge("fefo_bucket_lend_allowed_usd", "What a bucket may lend to a target this week under lend_limits, in API-equivalent USD.")
+	gauge("fefo_bucket_lent_usd", "What a bucket lent to a target in its accounts' current weekly windows, in API-equivalent USD.")
+	for _, l := range limits {
+		lb := lbl("bucket", l.Bucket, "target", l.Target, "provider", l.Provider)
+		fmt.Fprintf(&b, "fefo_bucket_lend_allowed_usd%s %s\n", lb, num(l.AllowedUSD))
+		fmt.Fprintf(&b, "fefo_bucket_lent_usd%s %s\n", lb, num(l.LentUSD))
 	}
 	gauge("fefo_client_demand_per_hour", "Client consumption per hour in API-equivalent USD (unit=usd) or tokens (unit=tokens).")
 	for _, p := range sortedKeys(providers) {

@@ -22,18 +22,22 @@ nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px
 nav button.on { background: var(--chip); color: var(--fg); font-weight: 600; }
 .spacer { flex: 1; }
 .meta { color: var(--muted); font-size: 12px; }
+.hdr-ctl { display: flex; gap: 6px; align-items: center; margin: 0; font-size: 12px; color: var(--muted); }
 main { padding: 16px; max-width: 1400px; margin: 0 auto; }
 section { display: none; } section.on { display: block; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 .card h3 { margin: 0 0 6px; font-size: 14px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-h2 { font-size: 15px; margin: 20px 0 8px; }
+h2 { font-size: 15px; margin: 22px 0 2px; display: flex; gap: 8px; align-items: center; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; max-width: 900px; }
 .chip { display: inline-block; background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 12px; color: var(--muted); }
 .chip.own { color: var(--accent); } .chip.spare-first, .chip.spare { color: var(--ok); } .chip.last-resort { color: var(--warn); } .chip.probe { color: var(--muted); }
-.chip.bad { color: var(--bad); } .chip.ok { color: var(--ok); }
-.bar { height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; margin: 2px 0 6px; }
-.bar > i { display: block; height: 100%; background: var(--accent); }
+.chip.bad { color: var(--bad); } .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); }
+.bar { position: relative; height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; margin: 2px 0 6px; }
+.bar > i { position: absolute; left: 0; top: 0; display: block; height: 100%; background: var(--accent); }
 .bar.low > i { background: var(--bad); } .bar.mid > i { background: var(--warn); }
+.bar > i.allow { background: color-mix(in srgb, var(--warn) 35%, var(--bar)); }
+.bar > i.lent { background: var(--warn); } .bar.full > i.lent { background: var(--bad); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; }
 .why { color: var(--muted); font-size: 12px; margin-top: 6px; word-break: break-word; }
@@ -41,29 +45,65 @@ table { width: 100%; border-collapse: collapse; background: var(--panel); border
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13px; }
 th { color: var(--muted); font-weight: 600; background: var(--chip); }
 tr:last-child td { border-bottom: 0; }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .scroll { overflow-x: auto; }
 ol.plan { margin: 4px 0 0; padding-left: 20px; } ol.plan li { margin: 2px 0; }
 .warn { background: color-mix(in srgb, var(--warn) 15%, var(--panel)); border: 1px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
 .err { color: var(--bad); }
 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
 input, select, textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+input.bad { border-color: var(--bad); outline-color: var(--bad); }
 textarea { width: 100%; font-family: var(--mono); font-size: 12px; min-height: 80px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 10px; }
 .row > div { min-width: 120px; }
 button.act { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
 button:disabled { opacity: .5; cursor: default; }
 button.sec { background: var(--chip); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+button.small { padding: 2px 8px; font-size: 12px; }
 button.danger { color: var(--bad); }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .mono { font-family: var(--mono); font-size: 12px; }
-.toast { position: fixed; bottom: 16px; right: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,.15); display: none; }
+.toast { position: fixed; bottom: 16px; right: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,.15); display: none; z-index: 5; }
 #login { max-width: 420px; margin: 60px auto; }
-.flowcell { white-space: nowrap; }
 .prov { display: inline-flex; vertical-align: middle; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; color: #fff; background: var(--muted); font-size: 11px; font-weight: 700; flex: none; }
 .prov svg { width: 12px; height: 12px; display: block; }
 .prov.claude { background: #d97757; } .prov.codex { background: #10a37f; } .prov.gemini { background: #4285f4; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
+.legend .chip { margin-right: 4px; }
+/* settings */
+.group { margin-bottom: 14px; }
+.group > h3 { font-size: 15px; margin-bottom: 2px; }
+.fields { display: grid; gap: 14px 18px; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); margin-top: 8px; }
+.field .flabel { font-weight: 600; font-size: 13px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.field .finput { display: flex; gap: 6px; align-items: center; margin: 4px 0 3px; }
+.field .finput input[type=number] { width: 110px; } .field .finput input[type=text] { width: 100%; max-width: 260px; }
+.help { color: var(--muted); font-size: 12px; }
+.field select { max-width: 100%; }
+.key { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
+.unit { color: var(--muted); font-size: 12.5px; }
+.check { display: flex; gap: 6px; align-items: center; color: var(--fg); font-size: 13px; margin: 4px 0 3px; }
+.block { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+.block > .flabel { font-weight: 600; font-size: 13px; }
+.link { color: var(--accent); cursor: pointer; font-size: 12px; background: none; border: 0; padding: 0; font: inherit; font-size: 12px; }
+.pts { display: grid; grid-template-columns: auto auto auto; gap: 4px 8px; align-items: center; margin: 6px 0; justify-content: start; }
+.pts input { width: 90px; }
+.curve { margin-top: 6px; }
+.chart { width: 100%; max-width: 640px; height: auto; display: block; margin-top: 6px; }
+.chart text { font: 10px system-ui, sans-serif; fill: var(--muted); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .line { fill: none; stroke: var(--fg); stroke-width: 1.5; }
+.chart .pt { fill: var(--fg); }
+.chart .mk { stroke: var(--panel); stroke-width: 1.5; }
+.chart .mk.ok { fill: var(--ok); } .chart .mk.hold { fill: var(--bad); }
+.chart.reserve .below, .sw.reserve-below { fill: color-mix(in srgb, var(--accent) 32%, transparent); background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.chart.reserve .above, .sw.reserve-above { fill: color-mix(in srgb, var(--ok) 16%, transparent); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.chart.limit .below, .sw.limit-below { fill: color-mix(in srgb, var(--warn) 34%, transparent); background: color-mix(in srgb, var(--warn) 34%, transparent); }
+.chart.limit .above, .sw.limit-above { fill: var(--chip); background: var(--chip); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; border: 1px solid var(--line); }
+.sw.dot { border-radius: 50%; border: 0; } .sw.dot.ok { background: var(--ok); } .sw.dot.hold { background: var(--bad); }
+.limit { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.dirty { display: none; } .dirty.on { display: inline-block; }
 @media (max-width: 640px) { main { padding: 10px; } .row > div { min-width: 100%; } }
 </style>
 </head>
@@ -74,12 +114,12 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
     <button data-tab="overview" class="on">Overview</button>
     <button data-tab="traffic">Traffic</button>
     <button data-tab="overrides">Overrides</button>
-    <button data-tab="config">Config</button>
+    <button data-tab="config">Settings</button>
   </nav>
   <span class="spacer"></span>
   <span class="meta" id="meta"></span>
-  <label class="meta" style="display:flex;gap:4px;align-items:center;margin:0">units <select id="units"><option value="usd">$ (API-equivalent)</option><option value="tokens">tokens</option></select></label>
-  <label class="meta" style="display:flex;gap:4px;align-items:center;margin:0"><input type="checkbox" id="auto" checked> auto-refresh</label>
+  <label class="hdr-ctl" title="How quota amounts are shown. API $ values every request at the model's public API price; the % options show those dollars as a share of a week.">Show amounts as <select id="units"></select></label>
+  <label class="hdr-ctl"><input type="checkbox" id="auto" checked> Auto-refresh</label>
 </header>
 <main>
   <div id="login" class="card" hidden>
@@ -91,76 +131,88 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
   <div id="warnings"></div>
 
   <section id="overview" class="on">
-    <h2>Projection (all accounts as one pool, spare lent)</h2>
+    <div class="sub" id="unitsHint"></div>
+    <h2>Weekly outlook</h2>
+    <p class="sub">Each provider's accounts as one pool: all demand is served from the account that resets soonest, lending spare quota. This is a best case — clients that never borrow can leave quota unused that this outlook spends.</p>
     <div class="grid" id="projections"></div>
+    <div id="limitsBox" hidden>
+      <h2>Bucket lending limits</h2>
+      <p class="sub">How much each bucket has lent this week against its limit. Set limits under Settings → Buckets.</p>
+      <div class="grid" id="limits"></div>
+    </div>
     <h2>Accounts</h2>
+    <p class="sub">Each account's weekly and 5-hour quota windows, what its own clients are expected to use before the weekly reset, and the spare it can lend.</p>
     <div class="grid" id="accounts"></div>
-    <h2>Clients and their current plan</h2>
+    <h2>Clients</h2>
+    <p class="sub">Where each client's next request would go, best first. A session stays on its account while that account keeps its place in the list.</p>
+    <div class="legend" id="roleLegend"></div>
     <div class="grid" id="clients"></div>
   </section>
 
   <section id="traffic">
-    <h2>Traffic since plugin load (client → account)</h2>
+    <h2>Traffic since the plugin started</h2>
+    <p class="sub">Requests per client and account, and the role the account had in the client's list when it was chosen.</p>
     <div class="scroll"><table id="flows"></table></div>
     <h2>Recent decisions</h2>
+    <p class="sub">Newest first. Open a row to see the full ranking and the accounts left out.</p>
     <div class="filters">
-      <input id="fClient" placeholder="client">
-      <input id="fAccount" placeholder="account">
-      <select id="fOutcome"><option value="">any outcome</option><option>selected</option><option>rejected</option><option>delegated</option><option>unhandled</option></select>
-      <select id="fRole"><option value="">any role</option><option>own</option><option>spare-first</option><option>spare</option><option>last-resort</option><option>probe</option></select>
+      <input id="fClient" placeholder="Filter by client">
+      <input id="fAccount" placeholder="Filter by account">
+      <select id="fOutcome"><option value="">Any outcome</option><option value="selected">Account chosen</option><option value="rejected">Rejected</option><option value="delegated">Left to CPA</option><option value="unhandled">Not handled</option></select>
+      <select id="fRole"><option value="">Any role</option></select>
     </div>
     <div class="scroll"><table id="decisions"></table></div>
   </section>
 
   <section id="overrides">
-    <h2>Active overrides</h2>
+    <h2>Overrides in effect</h2>
+    <p class="sub">Temporary changes on top of the settings. They survive restarts and expire on their own.</p>
     <div id="ovList"></div>
     <h2>New temporary override</h2>
     <div class="card">
       <div class="row">
         <div><label>Client</label><select id="ovClient"></select></div>
-        <div><label>When exhausted</label><select id="ovPolicy"><option value="">(unchanged)</option><option value="any">any — use other accounts</option><option value="wait">wait — slow down, then 429</option><option value="fail">fail — reject</option></select></div>
-        <div><label>Spare factor (all clients)</label><input id="ovSpare" type="number" step="0.1" min="1" placeholder="(unchanged)"></div>
-        <div><label>For</label><select id="ovFor"><option>30m</option><option>1h</option><option selected>2h</option><option>4h</option><option>12h</option><option>24h</option><option value="">until cleared</option></select></div>
-        <div style="flex:1"><label>Note</label><input id="ovNote" style="width:100%" placeholder="why"></div>
+        <div><label>When its own accounts run out</label><select id="ovPolicy"><option value="">(keep the setting)</option><option value="any">Use any other account</option><option value="wait">Wait for a refill, then 429</option><option value="fail">Fail at once</option></select></div>
+        <div><label title="Lend only what is left beyond this many times the owners' expected use">Lending safety margin (all clients)</label><input id="ovSpare" type="number" step="0.1" min="1" placeholder="(keep the setting)"></div>
+        <div><label>For</label><select id="ovFor"><option value="30m">30 minutes</option><option value="1h">1 hour</option><option value="2h" selected>2 hours</option><option value="4h">4 hours</option><option value="12h">12 hours</option><option value="24h">1 day</option><option value="">Until cleared</option></select></div>
+        <div style="flex:1"><label>Note</label><input id="ovNote" style="width:100%" placeholder="why (shown in the list above)"></div>
         <button class="act" id="ovApply">Apply</button>
       </div>
-      <div class="meta">Example: “ci may use any account for the next 2h”. Overrides survive restarts and expire on their own.</div>
+      <div class="meta">Example: “ci may use any account for the next 2 hours”. A safety margin above the setting lends less; it applies to every client.</div>
     </div>
   </section>
 
   <section id="config">
     <div class="card" style="margin-bottom:12px">
       <div class="row" style="margin:0">
-        <div><strong>Source:</strong> <span id="cfgSource"></span></div>
+        <div><strong>Settings in use:</strong> <span id="cfgSource"></span> <span class="chip warn dirty" id="dirtyChip">unsaved changes</span></div>
         <span class="spacer"></span>
-        <input id="cfgNote" placeholder="change note" style="min-width:220px">
-        <button class="act" id="cfgSave">Save runtime config</button>
-        <button class="sec" id="cfgPromote">Make permanent in config.yaml</button>
-        <button class="sec danger" id="cfgRevert">Revert to config.yaml</button>
+        <input id="cfgNote" placeholder="What changed (optional)" style="min-width:220px">
+        <button class="act" id="cfgSave">Save and apply</button>
+        <button class="sec" id="cfgPromote" title="Write the runtime settings into config.yaml and stop using the runtime copy">Make permanent in config.yaml</button>
+        <button class="sec danger" id="cfgRevert" title="Drop the runtime settings and go back to config.yaml">Revert to config.yaml</button>
       </div>
-      <div class="meta">Saving stores the routing config in the plugin state file; it applies immediately and wins over config.yaml until reverted. <code>mode</code> and <code>state_file</code> always come from config.yaml. <em>Make permanent</em> writes the runtime config into config.yaml through CPA (the old section is kept as a backup, below) and stops using the runtime config.</div>
+      <div class="meta" style="margin-top:6px">Saving applies at once and keeps the settings in the plugin's state file, where they take precedence over config.yaml until you revert. <code>mode</code> and <code>state_file</code> always come from config.yaml. <em>Make permanent</em> writes them into config.yaml through CPA (the section it replaces is kept as a backup under Advanced).</div>
       <div class="err" id="cfgErr"></div>
     </div>
 
-    <h2>Global</h2>
-    <div class="card"><div class="row" id="globals"></div></div>
+    <div id="groups"></div>
 
-    <h2>Buckets <button class="sec" id="addBucket">+ bucket</button></h2>
-    <div class="meta" style="margin-bottom:6px">A bucket is a list of accounts (e-mail, auth file name or auth ID). Known accounts: <span id="knownAccounts"></span></div>
+    <h2>Buckets <button class="sec small" id="addBucket">+ Add bucket</button></h2>
+    <p class="sub">A bucket is a named group of accounts. Clients list the buckets they own, in order of preference; an account lends to other buckets' clients only quota its own clients are not expected to need. Accounts are named by e-mail, auth file name or auth ID. Known accounts: <span id="knownAccounts"></span></p>
     <div id="buckets"></div>
 
-    <h2>Clients <button class="sec" id="addClient">+ client</button></h2>
-    <div class="meta" style="margin-bottom:6px">Keys are caller scopes (<span class="mono">sha256("cli-proxy-api:caller-scope:v1\0"+key)</span>) or <span class="mono">sha256(key)</span>. Buckets are in preference order.</div>
+    <h2>Clients <button class="sec small" id="addClient">+ Add client</button></h2>
+    <p class="sub">A client is one or more API keys (for example one machine or one project). Keys are CPA caller scopes (<span class="mono">scripts/client-scope.sh</span>) or plain <span class="mono">sha256(key)</span>. Keys that belong to no client use the default client.</p>
     <div id="clientsCfg"></div>
 
-    <h2>Unknown keys seen</h2>
+    <h2>Keys seen that belong to no client</h2>
     <div id="unknownKeys"></div>
 
     <h2>Advanced</h2>
-    <details><summary>Edit the runtime config as JSON</summary>
+    <details><summary>Edit the settings as JSON</summary>
       <textarea id="rawJson" style="min-height:280px"></textarea>
-      <div class="row" style="margin-top:6px"><button class="sec" id="rawApply">Save JSON as runtime config</button></div>
+      <div class="row" style="margin-top:6px"><button class="sec" id="rawApply">Save JSON and apply</button></div>
     </details>
     <details><summary>config.yaml section (read-only)</summary><pre class="mono" id="baseYaml"></pre></details>
     <details><summary>config.yaml backups</summary>
@@ -175,6 +227,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 const API = "/v0/management/fefo";
 const KEY_STORE = "fefo-router:management-key";
 let key = "", status = null, cfgView = null, draft = null, dirty = false, timer = null, unknownSig = "";
+let liveHooks = []; // {node, fn}: settings widgets that redraw from fresh status
 const openRows = new Set();
 const $ = (id) => document.getElementById(id);
 
@@ -188,13 +241,27 @@ function el(tag, attrs, ...kids) {
   for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) n.append(k.nodeType ? k : String(k));
   return n;
 }
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : String(k));
+  return n;
+}
 function toast(msg, bad) { const t = $("toast"); t.textContent = msg; t.style.color = bad ? "var(--bad)" : ""; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500); }
 function pct(x) { return x == null || isNaN(x) ? "?" : (x * 100).toFixed(0) + "%"; }
-function usd(x) { return x == null || isNaN(x) ? "?" : "$" + (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2)); }
+// pctFine keeps one decimal below 10% so small amounts do not read as 0%.
+function pctFine(x) {
+  if (x == null || isNaN(x) || !isFinite(x)) return "?";
+  const v = x * 100, a = Math.abs(v);
+  return (v < 0 ? "−" : "") + (a >= 10 || a === 0 ? a.toFixed(0) : a.toFixed(1)) + "%";
+}
+function usd(x) {
+  if (x == null || isNaN(x)) return "?";
+  const a = Math.abs(x);
+  return (x < 0 ? "−" : "") + "$" + (a >= 100 ? Math.round(a).toLocaleString("en-US") : a.toFixed(2));
+}
 function tok(x) { return x == null || isNaN(x) ? "?" : x >= 1e9 ? (x / 1e9).toFixed(2) + "G" : x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? (x / 1e3).toFixed(1) + "k" : Math.round(x).toString(); }
-const UNITS_STORE = "fefo-router:units";
-function units() { try { return localStorage.getItem(UNITS_STORE) || status?.display_units || "usd"; } catch { return status?.display_units || "usd"; } }
-$("units").onchange = () => { try { localStorage.setItem(UNITS_STORE, $("units").value); } catch {} if (status) { renderOverview(); renderTraffic(); } };
 function until(t) {
   if (!t) return "?";
   let s = (new Date(t) - Date.now()) / 1000;
@@ -203,9 +270,220 @@ function until(t) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 function when(t) { return t ? new Date(t).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "?"; }
-function bar(rem) { return el("div", { class: "bar " + (rem < 0.1 ? "low" : rem < 0.3 ? "mid" : "") }, el("i", { style: `width:${Math.max(0, Math.min(1, rem)) * 100}%` })); }
+function bar(rem, scale) {
+  const b = el("div", { class: "bar " + (rem < 0.1 ? "low" : rem < 0.3 ? "mid" : "") }, el("i", { style: `width:${Math.max(0, Math.min(1, rem)) * 100}%` }));
+  if (scale != null && scale < 1) b.style.width = Math.max(4, scale * 100) + "%";
+  return b;
+}
+const DAY = 864e5;
 
-// --- auth ---------------------------------------------------------------
+// --- units ----------------------------------------------------------------
+// Amounts are API-equivalent dollars. The % units show them as a share of a
+// week: of the thing shown (relative) or of the provider's largest account
+// (absolute).
+const UNITS = {
+  usd: ["API $", "Dollars at the models' public API prices: what the same traffic would cost on the API."],
+  pct_relative: ["Relative %", "100% = the weekly capacity of what is shown: an account, a provider's pool, a bucket, or a client's own accounts (valued in API $)."],
+  pct_absolute: ["Absolute %", "100% = the week of the provider's largest account (valued in API $); every other amount is scaled to it, so accounts compare by size (account bars are drawn to the same scale)."],
+  tokens: ["Tokens", "Token counts where they are known; other amounts are shown as % of their own week."],
+};
+const UNITS_STORE = "fefo-router:units";
+function units() {
+  let u = "";
+  try { u = localStorage.getItem(UNITS_STORE) || ""; } catch {}
+  u = u || status?.display_units || "usd";
+  return UNITS[u] ? u : "usd";
+}
+const isUSD = () => units() === "usd";
+$("units").replaceChildren(...Object.entries(UNITS).map(([v, [label, help]]) => el("option", { value: v, title: help }, label)));
+$("units").onchange = () => { try { localStorage.setItem(UNITS_STORE, $("units").value); } catch {} if (status) { renderOverview(); renderTraffic(); runLiveHooks(); } };
+// largest is the provider's account with the largest weekly capacity.
+function largest(provider) {
+  let best = { usd: 0, name: "" };
+  for (const a of status?.accounts || []) if (a.provider === provider && a.capacity_usd > best.usd) best = { usd: a.capacity_usd, name: a.account };
+  return best;
+}
+// money formats dollars in the display units; own is the week of the thing
+// shown, for the relative units.
+function money(x, own, provider, signed) {
+  if (x == null || isNaN(x)) return "?";
+  const sign = signed && x > 0 ? "+" : "";
+  if (isUSD()) return sign + usd(x);
+  const of = units() === "pct_absolute" ? largest(provider).usd : own;
+  return of ? sign + pctFine(x / of) : "?";
+}
+// weekText is a weekly capacity in the display units, always with its dollars.
+function weekText(capUSD, provider) {
+  if (isUSD()) return usd(capUSD) + "/week";
+  return `${money(capUSD, capUSD, provider)} = ${usd(capUSD)}/week`;
+}
+function unitsHint() {
+  const u = units();
+  if (u !== "pct_absolute") return UNITS[u][1];
+  const ps = [...new Set((status?.accounts || []).map((a) => a.provider))].sort();
+  const refs = ps.map((p) => { const b = largest(p); return b.usd ? `${p}: ${b.name} (${usd(b.usd)}/week)` : null; }).filter(Boolean);
+  return UNITS[u][1] + (refs.length ? " 100% is " + refs.join(" · ") + "." : "");
+}
+
+// --- share-of-the-week curves (lend_reserve, lend_limits) -------------------
+// parseDur reads a Go duration or a number of days ("7d", "1.5d"); NaN if bad.
+function parseDur(s) {
+  s = String(s ?? "").trim();
+  if (s === "0") return 0;
+  const d = s.match(/^(\d+(?:\.\d+)?)d$/);
+  if (d) return parseFloat(d[1]) * DAY;
+  let total = 0, used = 0;
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)) { total += parseFloat(m[1]) * { ms: 1, s: 1e3, m: 6e4, h: 36e5 }[m[2]]; used += m[0].length; }
+  return used && used === s.length ? total : NaN;
+}
+function fmtLeft(ms) {
+  if (ms === 0) return "0h";
+  if (ms % DAY === 0) return ms / DAY + "d";
+  if (ms % 36e5 === 0) return ms / 36e5 + "h";
+  return Math.round(ms / 6e4) + "m";
+}
+// share turns a percent typed by the user into a share without float noise.
+const share = (percent) => +(percent / 100).toFixed(8);
+function isOff(v) { return v == null || (typeof v === "object" && !Object.keys(v).length); }
+// curvePoints turns a configured share (a number, or time left → share)
+// into points sorted by time left.
+function curvePoints(v) {
+  if (isOff(v)) return [];
+  if (typeof v === "number") return [{ left: 0, keep: v }];
+  return Object.entries(v).map(([k, x]) => ({ left: parseDur(k), keep: Number(x) })).filter((p) => !isNaN(p.left) && !isNaN(p.keep)).sort((a, b) => a.left - b.left);
+}
+// curveAt mirrors the plugin: linear between points, the nearest point's
+// share outside them.
+function curveAt(pts, left) {
+  if (!pts.length) return 0;
+  if (left <= pts[0].left) return pts[0].keep;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (left <= b.left) return a.keep + (left - a.left) / (b.left - a.left) * (b.keep - a.keep);
+  }
+  return pts.at(-1).keep;
+}
+// curveSentence describes a curve point by point, highest time left first:
+// "With 7d left <lead> 70%<tail>; with 8h left, 1%."
+function curveSentence(v, lead, tail, allWeek) {
+  const pts = curvePoints(v).reverse();
+  if (pts.length === 1) return `${lead[0].toUpperCase() + lead.slice(1)} ${pct(pts[0].keep)}${tail}${allWeek}.`;
+  return pts.map((p, i) => i ? `with ${fmtLeft(p.left)} left, ${pct(p.keep)}` : `With ${fmtLeft(p.left)} left ${lead} ${pct(p.keep)}${tail}`).join("; ") + ". The share moves in a straight line between points.";
+}
+function curveText(v) {
+  if (isOff(v)) return "none";
+  if (typeof v === "number") return pct(v) + " all week";
+  const pts = curvePoints(v).reverse();
+  if (pts.length === 1) return pct(pts[0].keep) + " all week";
+  return pts.map((p) => `${pct(p.keep)} with ${fmtLeft(p.left)} left`).join(" → ");
+}
+// curveChart plots a curve over the week: time left until the weekly reset
+// runs left (a fresh week) to right (the reset).
+function curveChart(pts, o) {
+  const W = 600, H = 156, L = 38, R = 10, T = 8, B = 22, w = W - L - R, h = H - T - B;
+  const marks = o.markers ? o.markers(pts) : [];
+  const maxLeft = Math.max(7 * DAY, ...pts.map((p) => p.left), ...marks.map((m) => m.left));
+  const X = (left) => L + (1 - left / maxLeft) * w, Y = (s) => T + (1 - Math.max(0, Math.min(1, s))) * h;
+  const N = 160, line = [];
+  for (let i = 0; i <= N; i++) { const left = maxLeft * (1 - i / N); line.push(`${i ? "L" : "M"}${X(left).toFixed(1)} ${Y(curveAt(pts, left)).toFixed(1)}`); }
+  const d = line.join(" ");
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart " + o.cls, role: "img", "aria-label": o.aria || "" },
+    svg("rect", { x: L, y: T, width: w, height: h, class: "above" }),
+    svg("path", { d: `${d} L${L + w} ${T + h} L${L} ${T + h} Z`, class: "below" }));
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+    s.append(svg("line", { x1: L, x2: L + w, y1: Y(v), y2: Y(v), class: "grid", "stroke-dasharray": v % 0.5 ? "2 3" : "" }));
+    if (v % 0.5 === 0) s.append(svg("text", { x: L - 5, y: Y(v) + 3, "text-anchor": "end" }, v * 100 + "%"));
+  }
+  for (let day = Math.floor(maxLeft / DAY); day >= 0; day--) {
+    const x = X(day * DAY);
+    s.append(svg("line", { x1: x, x2: x, y1: T + h, y2: T + h + 4, class: "grid" }));
+    s.append(svg("text", { x, y: H - 6, "text-anchor": day === 0 ? "end" : "middle" }, day ? day + "d left" : "reset"));
+  }
+  s.append(svg("path", { d, class: "line" }));
+  for (const p of pts) if (p.left > 0 || pts.length > 1) s.append(svg("circle", { cx: X(p.left), cy: Y(p.keep), r: 3, class: "pt" }, svg("title", {}, `${pct(p.keep)} with ${fmtLeft(p.left)} left`)));
+  for (const m of marks) s.append(svg("circle", { cx: X(m.left), cy: Y(m.share), r: 4.5, class: "mk " + (m.ok ? "ok" : "hold") }, svg("title", {}, m.label)));
+  return s;
+}
+// curveEditor edits a share of the week: off (when allowed), one share all
+// week, or a curve of points by time left, with a live chart.
+function curveEditor(o) {
+  const box = el("div", { class: "curve" });
+  const draw = () => {
+    const v = o.get();
+    const mode = isOff(v) ? (o.offLabel ? "off" : "const") : typeof v === "number" ? "const" : "curve";
+    const modes = [...(o.offLabel ? [["off", o.offLabel]] : []), ["const", "Same share all week"], ["curve", "Changes toward the weekly reset"]];
+    const sel = el("select", {}, ...modes.map(([v, l]) => el("option", { value: v }, l)));
+    sel.value = mode;
+    sel.onchange = () => {
+      const cur = curvePoints(o.get());
+      if (sel.value === "off") o.set({});
+      else if (sel.value === "const") o.set(cur.length ? cur.at(-1).keep : o.seedConst);
+      else o.set(o.seedCurve(cur.length ? cur.at(-1).keep : o.seedConst));
+      draw();
+    };
+    const chartBox = el("div"), summary = el("div", { class: "help" });
+    const redraw = () => {
+      const val = o.get(), pts = curvePoints(val);
+      summary.textContent = isOff(val) ? o.offText : o.summary(val);
+      chartBox.replaceChildren(...(isOff(val) ? [] : [curveChart(pts, o), o.legend()]));
+    };
+    const parts = [el("div", { class: "finput" }, sel)];
+    if (mode === "const") {
+      const inp = el("input", { type: "number", min: 0, max: 100, step: 1, value: +(Number(v ?? o.seedConst) * 100).toFixed(2) });
+      inp.oninput = () => { const x = parseFloat(inp.value); inp.classList.toggle("bad", isNaN(x) || x < 0 || x > 100); if (!inp.classList.contains("bad")) { o.set(share(x)); redraw(); } };
+      parts.push(el("div", { class: "finput" }, inp, el("span", { class: "unit" }, o.constUnit)));
+    }
+    if (mode === "curve") {
+      const rows = Object.entries(v).map(([k, x]) => ({ k, x: +(Number(x) * 100).toFixed(2) })).sort((a, b) => parseDur(b.k) - parseDur(a.k));
+      const grid = el("div", { class: "pts" });
+      const commit = () => {
+        const out = {}, seen = new Set();
+        let ok = true;
+        for (const r of rows) {
+          const left = parseDur(r.k), bad = isNaN(left) || left < 0 || seen.has(left);
+          const badX = isNaN(r.x) || r.x < 0 || r.x > 100;
+          r.kIn.classList.toggle("bad", bad); r.xIn.classList.toggle("bad", badX);
+          if (bad || badX) { ok = false; continue; }
+          seen.add(left); out[r.k] = share(r.x);
+        }
+        if (ok && rows.length) { o.set(out); redraw(); }
+      };
+      const drawRows = () => {
+        grid.replaceChildren(el("label", {}, "Time left until reset"), el("label", {}, o.pointUnit), el("span"));
+        for (const r of rows) {
+          r.kIn = el("input", { value: r.k, placeholder: "7d, 36h", title: "Time left until the weekly reset: days (7d, 1.5d), hours (8h) or minutes (30m)" });
+          r.xIn = el("input", { type: "number", min: 0, max: 100, step: 1, value: r.x });
+          r.kIn.oninput = () => { r.k = r.kIn.value.trim(); commit(); };
+          r.xIn.oninput = () => { r.x = parseFloat(r.xIn.value); commit(); };
+          grid.append(r.kIn, el("div", { class: "finput", style: "margin:0" }, r.xIn, el("span", { class: "unit" }, "%")),
+            rows.length > 2 ? el("button", { class: "link", title: "remove this point", onclick: () => { rows.splice(rows.indexOf(r), 1); drawRows(); commit(); } }, "✕") : el("span"));
+        }
+      };
+      drawRows();
+      parts.push(grid, el("button", { class: "sec small", onclick: () => {
+        const used = new Set(rows.map((r) => parseDur(r.k)));
+        let left = [3 * DAY, DAY, 2 * DAY, 4 * DAY, 12 * 36e5, 5 * DAY, 6 * DAY].find((x) => !used.has(x)) ?? 2 * 36e5;
+        rows.push({ k: fmtLeft(left), x: +(curveAt(curvePoints(o.get()), left) * 100).toFixed(1) });
+        rows.sort((a, b) => parseDur(b.k) - parseDur(a.k)); drawRows(); commit();
+      } }, "+ Add point"));
+    }
+    parts.push(summary, chartBox);
+    box.replaceChildren(...parts);
+    redraw();
+    box._redraw = redraw;
+  };
+  draw();
+  liveHooks.push({ node: box, fn: () => box._redraw() });
+  return box;
+}
+function legend(...items) { return el("div", { class: "legend" }, ...items.map(([cls, text]) => el("span", {}, el("span", { class: "sw " + cls }), text))); }
+// runLiveHooks redraws the widgets still on the page and forgets the rest.
+function runLiveHooks() {
+  liveHooks = liveHooks.filter((h) => h.node.isConnected);
+  for (const h of liveHooks) try { h.fn(); } catch {}
+}
+
+// --- auth -----------------------------------------------------------------
 function dashboardKey() {
   try {
     const stored = localStorage.getItem("cli-proxy-auth") || "";
@@ -241,7 +519,7 @@ async function api(path, body) {
 function showLogin(msg) { $("login").hidden = false; $("loginErr").textContent = msg || ""; }
 $("keyBtn").onclick = () => { key = $("keyInput").value.trim(); try { sessionStorage.setItem(KEY_STORE, key); } catch {} $("login").hidden = true; $("auto").checked = true; refresh(true); schedule(); };
 
-// --- tabs ---------------------------------------------------------------
+// --- tabs -----------------------------------------------------------------
 for (const b of document.querySelectorAll("#tabs button")) {
   b.onclick = () => {
     for (const x of document.querySelectorAll("#tabs button")) x.classList.toggle("on", x === b);
@@ -250,7 +528,7 @@ for (const b of document.querySelectorAll("#tabs button")) {
   };
 }
 
-// --- overview -----------------------------------------------------------
+// --- overview -------------------------------------------------------------
 const PROVIDER_ICONS = {
   // eight-ray spark
   claude: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg>',
@@ -266,200 +544,378 @@ function providerIcon(provider) {
   else n.textContent = (p[0] || "?").toUpperCase();
   return n;
 }
+const ROLES = {
+  probe: "no quota data yet: one request learns its windows",
+  "spare-first": "spare quota of another bucket (or a later own one) that resets before the client's own account",
+  own: "one of the client's own buckets, in preference order",
+  spare: "spare quota of another bucket",
+  "last-resort": "any other usable account (only when the client's setting is “use any other account”)",
+};
+const roleChip = (r) => el("span", { class: "chip " + r, title: ROLES[r] || "" }, r);
+$("roleLegend").replaceChildren(...Object.entries(ROLES).map(([r, t]) => el("span", {}, roleChip(r), t)));
+$("fRole").append(...Object.keys(ROLES).map((r) => el("option", { value: r }, r)));
+const POLICY_TEXT = { any: "use any other account", wait: "wait for a refill, then 429", fail: "fail at once" };
+function policyText(p) {
+  const m = String(p || "").match(/^(\w+)\s*(?:\((.*)\))?$/);
+  if (!m) return p;
+  return (POLICY_TEXT[m[1]] || m[1]) + (m[2] && m[2] !== "config" ? ` (${m[2]})` : "");
+}
 function usageRows(u) {
   if (!u) return [];
-  const rows = [el("dt", {}, "usage report"), el("dd", { class: u.error ? "err" : "" }, u.error ? "poll failed: " + u.error : "polled " + when(u.polled_at))];
-  if (u.extra_usage_enabled != null) rows.push(el("dt", {}, "extra usage"), el("dd", { class: u.extra_usage_enabled ? "err" : "" }, u.extra_usage_enabled ? "enabled (paid)" : "off"));
+  const rows = [el("dt", {}, "Usage report"), el("dd", { class: u.error ? "err" : "" }, u.error ? "check failed: " + u.error : u.polled_at ? "checked " + when(u.polled_at) : "not checked yet")];
+  if (u.extra_usage_enabled != null) rows.push(el("dt", {}, "Paid extra usage"), el("dd", { class: u.extra_usage_enabled ? "err" : "" }, u.extra_usage_enabled ? "enabled (billed)" : "off"));
   for (const s of u.scoped || []) {
-    const text = s.allowance ? `~${pct(s.estimated_remaining)} of its ${pct(s.allowance)} allowance left (polled ${pct(s.polled_remaining)}, ${usd(s.spent_since_usd)} since) · resets ${when(s.reset)}` : "";
-    rows.push(el("dt", {}, s.family), el("dd", { class: s.blocked ? "err" : "" }, s.blocked ? (text ? text + " · " : "") + "blocked: " + s.blocked : text));
+    const text = s.allowance ? `~${pct(s.estimated_remaining)} of its ${pct(s.allowance)} allowance left (checked ${pct(s.polled_remaining)}, ${usd(s.spent_since_usd)} since) · resets ${when(s.reset)}` : "";
+    rows.push(el("dt", {}, s.family + " allowance"), el("dd", { class: s.blocked ? "err" : "" }, s.blocked ? (text ? text + " · " : "") + "not used: " + s.blocked : text));
   }
   return rows;
 }
+function limitBar(l) {
+  const cap = l.capacity_usd || 0, allow = cap ? l.allowed_usd / cap : 0, lent = cap ? l.lent_usd / cap : 0;
+  return el("div", { class: "bar" + (l.open ? "" : " full"), title: "whole bar: the bucket's week · shaded: allowed now · filled: lent" },
+    el("i", { class: "allow", style: `width:${Math.min(1, allow) * 100}%` }), el("i", { class: "lent", style: `width:${Math.min(1, lent) * 100}%` }));
+}
+const targetText = (t) => t === "any" ? "every other bucket" : "bucket " + t;
 function renderOverview() {
   const w = $("warnings"); w.replaceChildren();
   for (const x of status.warnings || []) w.append(el("div", { class: "warn" }, "⚠ " + x));
-  if (status.host_error) w.append(el("div", { class: "warn" }, "Host sync error: " + status.host_error));
+  if (status.host_error) w.append(el("div", { class: "warn" }, "Could not sync with CPA: " + status.host_error));
   if (status.state_error) w.append(el("div", { class: "warn" }, "State file: " + status.state_error));
-  if (status.pricing?.sync_error) w.append(el("div", { class: "warn" }, "Price sync (keeping the " + status.pricing.source + " table): " + status.pricing.sync_error));
+  if (status.pricing?.sync_error) w.append(el("div", { class: "warn" }, "Price sync failed (keeping the " + status.pricing.source + " table): " + status.pricing.sync_error));
+  $("unitsHint").textContent = "Amounts: " + unitsHint();
 
   const pr = $("projections"); pr.replaceChildren();
   for (const x of status.projections || []) {
-    const inTok = units() === "tokens", share = (v) => x.capacity_usd ? pct(v / x.capacity_usd) : "?";
-    const amt = inTok ? share : usd;
+    const p = x.provider, cap = x.capacity_usd, amt = (v) => money(v, cap, p);
     const rows = [
-      el("dt", {}, "capacity"), el("dd", {}, `${inTok ? "100% of a week" : usd(x.capacity_usd) + "/week"} over ${x.accounts} account${x.accounts === 1 ? "" : "s"}`),
-      el("dt", {}, "remaining"), el("dd", {}, inTok ? share(x.remaining_usd) + " of a week" : `${usd(x.remaining_usd)} (${share(x.remaining_usd)} of a week)`),
-      el("dt", {}, "home expected"), el("dd", {}, amt(x.expected_usd)),
-      el("dt", {}, "spare now"), el("dd", {}, amt(x.spare_usd)),
+      el("dt", {}, "Weekly capacity"), el("dd", {}, `${weekText(cap, p)} · ${x.accounts} account${x.accounts === 1 ? "" : "s"}`),
+      el("dt", { title: "Quota left in every account until its own weekly reset" }, "Left now"), el("dd", {}, amt(x.remaining_usd)),
+      el("dt", { title: "What each account's own clients are expected to use before its reset" }, "Owners will use"), el("dd", {}, amt(x.expected_usd)),
+      el("dt", { title: "Quota no owner is expected to need before it resets: lendable" }, "Spare now"), el("dd", {}, amt(x.spare_usd)),
     ];
     if (x.demand_known) {
       const days = x.horizon_hours / 24;
       rows.push(
-        inTok ? null : el("dt", {}, "demand"), inTok ? null : el("dd", {}, `${usd(x.demand_usd_per_hour)}/h · ${usd(x.demand_usd_per_hour * 168)}/week`),
-        el("dt", {}, "utilisation"), el("dd", { class: x.utilisation > 1 ? "err" : "" }, pct(x.utilisation) + " of weekly capacity"),
-        el("dt", {}, `next ${days}d use`), el("dd", {}, amt(x.use_usd)),
-        el("dt", {}, "resets unused"), el("dd", {}, amt(x.wasted_usd)),
-        el("dt", {}, "shortfall"), el("dd", { class: x.shortfall_usd > 0 ? "err" : "" }, x.shortfall_usd > 0 ? `${amt(x.shortfall_usd)} · runs dry ${when(x.dry_at)} (in ${until(x.dry_at)})` : "none"));
+        el("dt", { title: "Every client plus usage outside CPA" }, "Demand"), el("dd", {}, isUSD() ? `${usd(x.demand_usd_per_hour)}/h · ${usd(x.demand_usd_per_hour * 168)}/week` : amt(x.demand_usd_per_hour * 168) + " per week"),
+        el("dt", {}, "Load"), el("dd", { class: x.utilisation > 1 ? "err" : "" }, pct(x.utilisation) + " of the weekly capacity"),
+        el("dt", {}, `Used in ${days} days`), el("dd", {}, amt(x.use_usd)),
+        el("dt", { title: "Quota that reaches its weekly reset unused and is lost" }, "Expires unused"), el("dd", {}, amt(x.wasted_usd)),
+        el("dt", { title: "Demand no account could serve" }, "Shortfall"), el("dd", { class: x.shortfall_usd > 0 ? "err" : "" }, x.shortfall_usd > 0 ? `${amt(x.shortfall_usd)} · runs dry ${when(x.dry_at)} (in ${until(x.dry_at)})` : "none"));
     }
-    const fill = x.demand_known && x.capacity_usd ? Math.min(1, x.utilisation) : null;
+    const fill = x.demand_known && cap ? Math.min(1, x.utilisation) : null;
     pr.append(el("div", { class: "card" },
-      el("h3", {}, providerIcon(x.provider), x.provider, x.demand_known ? (x.shortfall_usd > 0 ? el("span", { class: "chip bad" }, "short") : el("span", { class: "chip ok" }, "covered")) : el("span", { class: "chip" }, "demand unknown")),
-      fill == null ? null : el("div", { class: "meta" }, `demand uses ${pct(x.utilisation)} of the pool's week`), fill == null ? null : bar(1 - fill),
+      el("h3", {}, providerIcon(p), p, x.demand_known ? (x.shortfall_usd > 0 ? el("span", { class: "chip bad" }, "runs short") : el("span", { class: "chip ok" }, "covered")) : el("span", { class: "chip" }, "demand not known yet")),
+      fill == null ? null : el("div", { class: "meta" }, `Demand takes ${pct(x.utilisation)} of the pool's week`), fill == null ? null : bar(1 - fill),
       el("dl", { class: "kv" }, ...rows),
-      x.excluded?.length ? el("div", { class: "why" }, "left out (no weekly window yet): " + x.excluded.join(", ")) : null,
+      x.excluded?.length ? el("div", { class: "why" }, "Left out (no weekly window yet): " + x.excluded.join(", ")) : null,
       x.why ? el("div", { class: "why" }, x.why) : null));
   }
-  const a = $("accounts"); a.replaceChildren();
-  for (const x of status.accounts || []) {
-    const state = !x.usable ? el("span", { class: "chip bad" }, "blocked") : x.no_data ? el("span", { class: "chip" }, "no data yet") : el("span", { class: "chip ok" }, "usable");
-    a.append(el("div", { class: "card" },
-      el("h3", {}, providerIcon(x.provider), x.account, ...(x.buckets || []).map((b) => el("span", { class: "chip own" }, "bucket " + b)), state),
-      el("div", { class: "meta" }, `weekly ${pct(x.weekly_remaining)} left · resets ${when(x.weekly_reset)} (in ${until(x.weekly_reset)})`), bar(x.weekly_remaining),
-      el("div", { class: "meta" }, `5h ${pct(x.short_remaining)} left · resets in ${until(x.short_reset)}`), bar(x.short_remaining),
+
+  const ls = status.lend_limits || [];
+  $("limitsBox").hidden = !ls.length;
+  $("limits").replaceChildren(...ls.map((l) => {
+    const amt = (v) => money(v, l.capacity_usd, l.provider);
+    return el("div", { class: "card" },
+      el("h3", {}, providerIcon(l.provider), `bucket ${l.bucket} → ${targetText(l.target)}`, l.open ? el("span", { class: "chip ok" }, "can lend") : el("span", { class: "chip bad" }, "limit reached")),
+      el("div", { class: "meta" }, `Lent ${amt(l.lent_usd)} of ${amt(l.allowed_usd)} allowed now`), limitBar(l),
       el("dl", { class: "kv" },
-        el("dt", {}, "home clients"), el("dd", {}, (x.home_clients || []).join(", ") || "none (shared pool)"),
+        el("dt", {}, "Limit"), el("dd", {}, curveText(l.share) + (typeof l.share === "object" ? ` (now ${pct(l.share_now)})` : "")),
+        el("dt", {}, "Bucket's week"), el("dd", {}, weekText(l.capacity_usd, l.provider))));
+  }));
+
+  const a = $("accounts"); a.replaceChildren();
+  const abs = units() === "pct_absolute";
+  for (const x of status.accounts || []) {
+    const p = x.provider, cap = x.capacity_usd, amt = (v, signed) => money(v, cap, p, signed);
+    const scale = abs && largest(p).usd ? cap / largest(p).usd : null;
+    const state = !x.usable ? el("span", { class: "chip bad" }, "not usable") : x.no_data ? el("span", { class: "chip" }, "no quota data yet") : el("span", { class: "chip ok" }, "usable");
+    a.append(el("div", { class: "card" },
+      el("h3", {}, providerIcon(p), x.account, ...(x.buckets || []).map((b) => el("span", { class: "chip own", title: "bucket" }, b)), state),
+      el("div", { class: "meta" }, `Weekly window: ${pct(x.weekly_remaining)} left · resets ${when(x.weekly_reset)} (in ${until(x.weekly_reset)})`), bar(x.weekly_remaining, scale),
+      el("div", { class: "meta" }, `5-hour window: ${pct(x.short_remaining)} left · resets in ${until(x.short_reset)}`), bar(x.short_remaining, scale),
+      el("dl", { class: "kv" },
+        el("dt", { title: "Clients whose buckets include this account" }, "Owned by"), el("dd", {}, (x.home_clients || []).join(", ") || "no client (shared)"),
         ...(units() === "tokens" ? [
-          el("dt", {}, "served"), el("dd", {}, `${tok(x.tokens_24h)} tokens in 24h · ${tok(x.tokens_7d)} in 7d`),
-          el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + pct(x.spare_usd / x.capacity_usd) + " of a week"),
+          el("dt", {}, "Served"), el("dd", {}, `${tok(x.tokens_24h)} tokens in 24h · ${tok(x.tokens_7d)} in 7d`),
+          el("dt", {}, "Spare"), el("dd", {}, x.spare_usd == null ? "not known yet" : amt(x.spare_usd, true) + " of its week"),
         ] : [
-          el("dt", {}, "capacity"), el("dd", { title: x.capacity_why || "" }, usd(x.capacity_usd) + "/week · " + x.capacity_source),
-          el("dt", {}, "remaining"), el("dd", {}, usd(x.remaining_usd)),
-          el("dt", {}, "expected use"), el("dd", {}, x.expected_usd == null ? "unknown yet" : usd(x.expected_usd)),
-          el("dt", {}, "spare"), el("dd", {}, x.spare_usd == null ? "unknown yet" : (x.spare_usd > 0 ? "+" : "") + usd(x.spare_usd)),
+          el("dt", {}, "Weekly capacity"), el("dd", { title: x.capacity_why || "" }, weekText(cap, p) + " · " + x.capacity_source),
+          el("dt", {}, "Left"), el("dd", {}, amt(x.remaining_usd)),
+          el("dt", { title: "What its own clients (and usage outside CPA) are expected to use before its weekly reset" }, "Owners will use"), el("dd", {}, x.expected_usd == null ? "not known yet" : amt(x.expected_usd)),
+          el("dt", { title: "What it can lend to other buckets now" }, "Spare"), el("dd", {}, x.spare_usd == null ? "not known yet" : amt(x.spare_usd, true)),
         ]),
-        el("dt", {}, "data age"), el("dd", {}, x.data_age || "—"),
+        el("dt", {}, "Quota data"), el("dd", {}, x.data_age ? x.data_age + " old" : "—"),
         ...usageRows(x.usage_report)),
-      x.blocked ? el("div", { class: "why err" }, x.blocked) : null,
-      x.spare_why ? el("div", { class: "why" }, x.spare_why) : null));
+      x.blocked ? el("div", { class: "why err" }, "Not usable: " + x.blocked) : null,
+      x.spare_why ? el("div", { class: "why" }, "Spare: " + x.spare_why) : null));
   }
+
   const c = $("clients"); c.replaceChildren();
   for (const x of status.clients || []) {
     const body = [];
     for (const p of Object.keys(x.plans || {}).sort()) {
       const d = x.demand[p] || {};
-      const dem = units() === "tokens"
-        ? `demand ${tok(d.tokens_per_hour)} tokens/h (24h ${tok(d.tokens_per_hour_24h)}, 7d ${tok(d.tokens_per_hour_7d)})`
-        : `demand ${usd(d.usd_per_hour)}/h (24h ${usd(d.usd_per_hour_24h)}, 7d ${usd(d.usd_per_hour_7d)})`;
-      body.push(el("div", { class: "meta" }, p + ": " + (d.known ? dem : "demand unknown — " + (d.why || ""))));
+      let dem;
+      if (units() === "tokens") dem = `${tok(d.tokens_per_hour)} tokens/h (last 24h ${tok(d.tokens_per_hour_24h)}, last 7d ${tok(d.tokens_per_hour_7d)})`;
+      else if (isUSD()) dem = `${usd(d.usd_per_hour)}/h (last 24h ${usd(d.usd_per_hour_24h)}, last 7d ${usd(d.usd_per_hour_7d)})`;
+      else {
+        // A week of demand against the client's own accounts (the pool when
+        // it has none), or against the largest account.
+        let own = 0, whose = "its own accounts'";
+        for (const a of status.accounts || []) if (a.provider === p && (a.buckets || []).some((b) => (x.buckets || []).includes(b))) own += a.capacity_usd;
+        if (!own) { own = (status.projections || []).find((q) => q.provider === p)?.capacity_usd || 0; whose = "the pool's"; }
+        if (units() === "pct_absolute") whose = "the largest account's";
+        const wk = (v) => money(v * 168, own, p);
+        dem = `${wk(d.usd_per_hour)} of ${whose} week per week (last 24h ${wk(d.usd_per_hour_24h)}, last 7d ${wk(d.usd_per_hour_7d)})`;
+      }
+      body.push(el("div", { class: "meta", style: "margin-top:6px" }, providerIcon(p), " Demand: ", d.known ? dem : "not known yet — " + (d.why || "")));
       const ol = el("ol", { class: "plan" });
-      for (const e of x.plans[p]) ol.append(el("li", {}, el("span", { class: "chip " + e.role }, e.role), " ", providerIcon(p), " ", el("strong", {}, e.account), el("div", { class: "why" }, e.why)));
+      for (const e of x.plans[p]) ol.append(el("li", {}, roleChip(e.role), " ", el("strong", {}, e.account), el("div", { class: "why" }, e.why)));
       if (!x.plans[p].length) ol.append(el("li", { class: "err" }, "no usable account"));
       body.push(ol);
     }
     c.append(el("div", { class: "card" },
-      el("h3", {}, x.client, ...(x.buckets || []).map((b, i) => el("span", { class: "chip own" }, (i + 1) + ". " + b))),
-      el("div", { class: "meta" }, "when exhausted: " + x.policy + (x.borrow ? " · borrows spare" : " · never borrows")), ...body));
+      el("h3", {}, x.client, ...(x.buckets || []).map((b, i) => el("span", { class: "chip own", title: "bucket, preference " + (i + 1) }, (i + 1) + ". " + b))),
+      el("div", { class: "meta" }, "When its own accounts run out: " + policyText(x.policy) + (x.borrow ? " · borrows spare from other buckets" : " · never borrows")), ...body));
   }
 }
 
-// --- traffic ------------------------------------------------------------
+// --- traffic --------------------------------------------------------------
 function renderTraffic() {
-  const roles = ["own", "spare-first", "spare", "last-resort", "probe"];
-  const inTokens = units() === "tokens";
-  const t = $("flows"); t.replaceChildren(el("tr", {}, el("th", {}, "client"), el("th", {}, "account"), el("th", {}, "buckets"), ...roles.map((r) => el("th", { class: "num" }, r)), el("th", { class: "num" }, "requests"), el("th", { class: "num" }, inTokens ? "tokens" : "API-equivalent $")));
+  const roles = Object.keys(ROLES);
+  const u = units();
+  const costHead = { usd: "API $", tokens: "Tokens", pct_relative: "% of the account's week", pct_absolute: "% of the largest account's week" }[u];
+  const byName = Object.fromEntries((status.accounts || []).map((a) => [a.account, a]));
+  const t = $("flows"); t.replaceChildren(el("tr", {}, el("th", {}, "Client"), el("th", {}, "Account"), el("th", {}, "Buckets"), ...roles.map((r) => el("th", { class: "num", title: ROLES[r] }, r)), el("th", { class: "num" }, "Requests"), el("th", { class: "num" }, costHead)));
   for (const f of status.flows || []) {
+    const a = byName[f.account];
+    const cost = u === "tokens" ? f.tokens.toLocaleString() : a ? money(f.cost_usd || 0, a.capacity_usd, a.provider) : usd(f.cost_usd || 0);
     t.append(el("tr", {}, el("td", {}, f.client), el("td", {}, f.account), el("td", {}, (f.buckets || []).join(", ")),
-      ...roles.map((r) => el("td", { class: "num" }, f.picks_by_role?.[r] || "")), el("td", { class: "num" }, f.requests), el("td", { class: "num" }, inTokens ? f.tokens.toLocaleString() : usd(f.cost_usd || 0))));
+      ...roles.map((r) => el("td", { class: "num" }, f.picks_by_role?.[r] || "")), el("td", { class: "num" }, f.requests), el("td", { class: "num" }, cost)));
   }
   if (!(status.flows || []).length) t.append(el("tr", {}, el("td", { colspan: 10, class: "meta" }, "No traffic yet.")));
   renderDecisions();
 }
+const OUTCOMES = { selected: "chosen", rejected: "rejected", delegated: "left to CPA", unhandled: "not handled" };
 function renderDecisions() {
   const fc = $("fClient").value.toLowerCase(), fa = $("fAccount").value.toLowerCase(), fo = $("fOutcome").value, fr = $("fRole").value;
   const t = $("decisions");
-  t.replaceChildren(el("tr", {}, el("th", {}, "time"), el("th", {}, "client"), el("th", {}, "model"), el("th", {}, "session"), el("th", {}, "→ account"), el("th", {}, "role"), el("th", {}, "why")));
+  t.replaceChildren(el("tr", {}, el("th", {}, "Time"), el("th", {}, "Client"), el("th", {}, "Model"),
+    el("th", { title: "new: first request of a session · pinned: stayed on its account · moved: its account left the plan · none: no session id" }, "Session"),
+    el("th", {}, "Sent to"), el("th", {}, "Role"), el("th", {}, "Why")));
   const ds = (status.recent_decisions || []).slice().reverse().filter((d) =>
     (!fc || d.client.toLowerCase().includes(fc)) && (!fa || (d.account || "").toLowerCase().includes(fa)) && (!fo || d.outcome === fo) && (!fr || d.role === fr));
   for (const d of ds) {
     const rowKey = d.time + "|" + d.client + "|" + d.model;
     const det = el("details", { open: openRows.has(rowKey), ontoggle: (e) => e.target.open ? openRows.add(rowKey) : openRows.delete(rowKey) }, el("summary", {}, d.reason),
-      el("div", { class: "why" }, "policy: " + (d.policy || "")),
+      el("div", { class: "why" }, "When its own accounts run out: " + policyText(d.policy || "")),
       el("ol", { class: "plan" }, ...(d.ranking || []).map((r) => el("li", { class: "why" }, r))),
-      (d.excluded || []).length ? el("div", { class: "why err" }, "excluded: " + d.excluded.join(" · ")) : null,
-      (d.scoped_excluded || []).length ? el("div", { class: "why err" }, "excluded for this model: " + d.scoped_excluded.join(" · ")) : null);
+      (d.excluded || []).length ? el("div", { class: "why err" }, "Left out: " + d.excluded.join(" · ")) : null,
+      (d.scoped_excluded || []).length ? el("div", { class: "why err" }, "Left out for this model: " + d.scoped_excluded.join(" · ")) : null);
     t.append(el("tr", {}, el("td", { class: "mono" }, new Date(d.time).toLocaleTimeString()), el("td", {}, d.client), el("td", { class: "mono" }, d.model || ""),
-      el("td", {}, d.session), el("td", {}, d.outcome === "selected" ? d.account + ((d.buckets || []).length ? ` [${d.buckets.join(",")}]` : "") : el("span", { class: "err" }, d.outcome)),
-      el("td", {}, d.role ? el("span", { class: "chip " + d.role }, d.role) : ""), el("td", {}, det)));
+      el("td", {}, d.session), el("td", {}, d.outcome === "selected" ? d.account + ((d.buckets || []).length ? ` [${d.buckets.join(",")}]` : "") : el("span", { class: "err" }, OUTCOMES[d.outcome] || d.outcome)),
+      el("td", {}, d.role ? roleChip(d.role) : ""), el("td", {}, det)));
   }
   if (!ds.length) t.append(el("tr", {}, el("td", { colspan: 7, class: "meta" }, "No decisions match.")));
 }
 for (const id of ["fClient", "fAccount", "fOutcome", "fRole"]) $(id).addEventListener("input", () => status && renderDecisions());
 
-// --- overrides ----------------------------------------------------------
+// --- overrides ------------------------------------------------------------
 function renderOverrides() {
   const list = $("ovList"); list.replaceChildren();
   const ovs = Object.entries(status.overrides || {});
   if (!ovs.length) list.append(el("div", { class: "meta" }, "None."));
   for (const [client, o] of ovs) {
     list.append(el("div", { class: "card", style: "margin-bottom:8px" },
-      el("h3", {}, client === "*" ? "all clients" : client, o.policy ? el("span", { class: "chip last-resort" }, "policy " + o.policy) : null, o.spare_factor ? el("span", { class: "chip" }, "spare factor " + o.spare_factor) : null),
+      el("h3", {}, client === "*" ? "all clients" : client, o.policy ? el("span", { class: "chip last-resort" }, "when out: " + (POLICY_TEXT[o.policy] || o.policy)) : null, o.spare_factor ? el("span", { class: "chip" }, "safety margin " + o.spare_factor + "×") : null),
       el("div", { class: "meta" }, (o.until ? "expires " + when(o.until) + " (in " + until(o.until) + ")" : "until cleared") + (o.note ? " · " + o.note : "")),
       el("button", { class: "sec danger", style: "margin-top:6px", onclick: async () => { try { await api("/override", { client, clear: true }); toast("Override cleared"); refresh(); } catch (e) { toast(e.message, true); } } }, "Clear")));
   }
   const sel = $("ovClient"), cur = sel.value;
-  sel.replaceChildren(el("option", { value: "*" }, "* all clients"), ...(status.clients || []).map((c) => el("option", { value: c.client }, c.client)));
+  sel.replaceChildren(el("option", { value: "*" }, "All clients"), ...(status.clients || []).map((c) => el("option", { value: c.client }, c.client)));
   if (cur) sel.value = cur;
 }
 $("ovApply").onclick = async () => {
   const body = { client: $("ovClient").value, policy: $("ovPolicy").value, for: $("ovFor").value, note: $("ovNote").value };
   const sf = parseFloat($("ovSpare").value);
-  if (sf) { body.spare_factor = sf; if (body.client !== "*") return toast("Spare factor overrides apply to all clients; choose “* all clients”.", true); }
-  if (!body.policy && !sf) return toast("Choose a policy and/or a spare factor.", true);
+  if (sf) { body.spare_factor = sf; if (body.client !== "*") return toast("The safety margin applies to every client; choose “All clients”.", true); }
+  if (!body.policy && !sf) return toast("Choose what happens when accounts run out, a safety margin, or both.", true);
   try { await api("/override", body); toast("Override applied"); refresh(); } catch (e) { toast(e.message, true); }
 };
 
-// --- config -------------------------------------------------------------
-const GLOBALS = [
-  ["spare_factor", "number", "Lend while remaining > factor × expected"], ["min_spare", "number", "Spare needed to start lending, share of the account's week"],
-  ["lend_reserve", "map", "Share of the week kept, by time left to reset, e.g. 7d: 0.7, 8h: 0.01 (linear between)"],
-  ["default_unit_usd", "number", "$ per unit of capacity before any account is learned"], ["learn_min_delta", "number", "Weekly share seen before a capacity estimate is used"],
-  ["min_remaining", "number", "Block a window below this share"], ["min_history", "text", "History before lending"],
-  ["session_ttl", "text", "Session pin lifetime"], ["usage_poll_interval", "text", "Claude usage report poll (0 = off)"], ["probe_interval", "text", "Probe accounts without data"],
-  ["stale_after", "text", "Limit flags expire after"], ["allow_extra_usage", "checkbox", "Allow paid extra usage"],
-  ["log_decisions", "checkbox", "Log every decision"], ["display_units", "text", "Default units: usd or tokens"], ["pacing.enabled", "checkbox", "Pace near refills"],
-  ["pacing.horizon", "text", "Pace if refill within"], ["pacing.max_delay", "text", "Max delay per request"],
-  ["wait.horizon", "text", "Wait policy: refill within"], ["wait.max_wait", "text", "Wait policy: max hold"],
-  ["pricing.sync", "checkbox", "Sync prices from models.dev"], ["pricing.sync_interval", "text", "Price sync interval"],
-  ["pricing.url", "text", "Price source URL"],
+// --- settings -------------------------------------------------------------
+// Each field: key (path in the settings), label, kind, default, help.
+// kinds: number, pct (stored as a share, shown ×100), dur, bool, select,
+// list (comma separated), text; or a custom block.
+const GROUPS = [
+  { title: "Lending spare quota", intro: "An account lends to other buckets' clients only quota its own clients are not expected to need before its weekly reset. These settings decide how careful that is.", fields: [
+    { key: "spare_factor", label: "Safety margin", kind: "number", unit: "× expected use", step: 0.1, min: 1, def: 1.5, defText: "1.5×", help: "Lend only what is left beyond this many times the owners' expected use. 1.5 keeps 50% extra for them; 1 lends everything they are not expected to use." },
+    { key: "min_spare", label: "Smallest spare worth lending", kind: "pct", def: 0.03, help: "Start lending only once the spare is at least this share of the account's week, so accounts do not flip in and out on rounding. A session already borrowing stays until the spare reaches 0." },
+    { key: "min_history", label: "Measure demand for", kind: "dur", def: "6h", help: "Nothing is lent until clients' demand has been measured this long." },
+    { block: reserveBlock },
+  ] },
+  { title: "When an account stops taking requests", fields: [
+    { key: "min_remaining", label: "Stop below", kind: "pct", def: 0.01, step: 0.5, help: "An account whose weekly or 5-hour window has less than this left is not used until that window refills." },
+    { key: "allow_extra_usage", label: "Allow paid extra usage", kind: "bool", def: false, help: "Let exhausted accounts keep serving from paid overage, and lift the protection below. Off: never spend beyond the subscription." },
+    { key: "scoped_families", label: "Model families with their own allowance", kind: "list", def: ["fable"], help: "Comma separated. Requests of these families are kept off accounts whose plan has no allowance for them while extra usage would bill them." },
+  ] },
+  { title: "Capacity: how much one account's week holds", intro: "Capacity is the API-$ value of a full weekly window, learned per account from its own traffic (dollars at API prices ÷ the share of the week they used). Until it is learned, an estimate from the plan size is used.", fields: [
+    { key: "default_unit_usd", label: "Estimate for a Pro-sized week", kind: "number", unit: "$ per week", step: 1, min: 1, def: 220, defText: "$220", help: "Used (× the plan size below) until any account of the provider has learned its capacity; after that, the median learned value is used." },
+    { key: "learn_min_delta", label: "Trust a week's estimate after", kind: "pct", def: 0.05, help: "A week's capacity estimate is used once that week has seen this share of use." },
+    { block: capacityBlock },
+  ] },
+  { title: "Slowing down instead of failing", intro: "Close to a refill it is often better to slow a client down than to let it hit a wall.", fields: [
+    { key: "pacing.enabled", label: "Pace clients near a refill", kind: "bool", def: true, help: "When a client is down to its last account and would empty it before a refill, delay each request so the quota lasts until then." },
+    { key: "pacing.horizon", label: "Pace only if the refill is within", kind: "dur", def: "2h" },
+    { key: "pacing.max_delay", label: "Longest delay per request", kind: "dur", def: "30s" },
+    { key: "wait.horizon", label: "“Wait” clients: hold requests if the refill is within", kind: "dur", def: "2h", help: "For clients set to wait when their accounts run out. Beyond this they get 429 at once." },
+    { key: "wait.max_wait", label: "“Wait” clients: longest hold per request", kind: "dur", def: "30s", help: "After this the request is answered 429 with Retry-After set to the refill." },
+  ] },
+  { title: "Sessions and quota data", fields: [
+    { key: "session_ttl", label: "Keep an idle session on its account for", kind: "dur", def: "1h" },
+    { key: "probe_interval", label: "Probe accounts without quota data every", kind: "dur", def: "5m", help: "One request to an account with no quota data yet, to learn its windows." },
+    { key: "stale_after", label: "Forget limit flags without a reset time after", kind: "dur", def: "30m" },
+    { key: "usage_poll_interval", label: "Check Claude usage reports every", kind: "dur", def: "5m", help: "The usage report carries model-family allowances and extra usage. 0 turns it off." },
+  ] },
+  { title: "Prices", intro: "Every request is valued at its model's public API price. Order: prices in config.yaml, then the last sync, then the built-in table.", fields: [
+    { key: "pricing.sync", label: "Sync prices from models.dev", kind: "bool", def: true },
+    { key: "pricing.sync_interval", label: "Sync every", kind: "dur", def: "24h", help: "At least 1h." },
+    { key: "pricing.url", label: "Price source", kind: "text", def: "https://models.dev/api.json" },
+  ] },
+  { title: "Display and logs", fields: [
+    { key: "display_units", label: "Default amounts", kind: "select", def: "usd", options: [["usd", "API $"], ["pct_relative", "Relative % — of each thing's own week"], ["pct_absolute", "Absolute % — of the largest account's week"], ["tokens", "Tokens"]], help: "For the text status and for browsers that have not picked units in the header." },
+    { key: "log_decisions", label: "Log every routing decision", kind: "bool", def: true, help: "One line per request in CPA's log: client, account, role and why." },
+  ] },
 ];
 function getPath(o, p) { return p.split(".").reduce((x, k) => x?.[k], o); }
-function setPath(o, p, v) { const ks = p.split("."); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; x[ks.at(-1)] = v; }
-function markDirty() { dirty = true; $("rawJson").value = JSON.stringify(draft, null, 2); }
+function setPath(o, p, v) { const ks = p.split("."); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; if (v === undefined) delete x[ks.at(-1)]; else x[ks.at(-1)] = v; }
+function markDirty() { dirty = true; $("dirtyChip").classList.add("on"); $("rawJson").value = JSON.stringify(draft, null, 2); }
+const DUR_HELP = "A duration such as 30s, 5m, 6h or 1d";
+function fmtDefault(f) {
+  if (f.kind === "pct") return pct(f.def);
+  if (f.kind === "bool") return f.def ? "on" : "off";
+  if (f.kind === "list") return f.def.join(", ");
+  if (f.kind === "select") return (f.options.find(([v]) => v === f.def) || [, f.def])[1];
+  return f.defText || String(f.def);
+}
+function fieldBox(f) {
+  const v = getPath(draft, f.key);
+  const set = (x) => { setPath(draft, f.key, x); markDirty(); };
+  let input;
+  switch (f.kind) {
+    case "bool": {
+      const cb = el("input", { type: "checkbox" }); cb.checked = !!v; cb.onchange = () => set(cb.checked);
+      input = el("label", { class: "check" }, cb, f.label);
+      break;
+    }
+    case "pct": case "number": {
+      const scale = f.kind === "pct" ? 100 : 1;
+      const inp = el("input", { type: "number", step: f.step ?? (f.kind === "pct" ? 0.5 : 0.01), min: f.min ?? 0, max: f.kind === "pct" ? 100 : null });
+      inp.value = v == null ? "" : +(v * scale).toFixed(4);
+      inp.oninput = () => { const x = parseFloat(inp.value); const bad = inp.value !== "" && (isNaN(x) || (f.min != null && x < f.min) || (f.kind === "pct" && (x < 0 || x > 100))); inp.classList.toggle("bad", bad); if (!bad) set(inp.value === "" ? undefined : +(x / scale).toFixed(8)); };
+      input = el("div", { class: "finput" }, inp, el("span", { class: "unit" }, f.kind === "pct" ? "%" : f.unit || ""));
+      break;
+    }
+    case "dur": {
+      const inp = el("input", { type: "text", value: v ?? "", placeholder: String(f.def), title: DUR_HELP, style: "width:110px" });
+      inp.oninput = () => { const bad = inp.value.trim() !== "" && isNaN(parseDur(inp.value)); inp.classList.toggle("bad", bad); if (!bad) set(inp.value.trim() || undefined); };
+      input = el("div", { class: "finput" }, inp);
+      break;
+    }
+    case "select": {
+      const sel = el("select", {}, ...f.options.map(([x, l]) => el("option", { value: x }, l))); sel.value = v ?? f.def; sel.onchange = () => set(sel.value);
+      input = el("div", { class: "finput" }, sel);
+      break;
+    }
+    case "list": {
+      const inp = el("input", { type: "text", value: (v || []).join(", ") });
+      inp.oninput = () => set(inp.value.split(",").map((s) => s.trim()).filter(Boolean));
+      input = el("div", { class: "finput" }, inp);
+      break;
+    }
+    default: {
+      const inp = el("input", { type: "text", value: v ?? "" }); inp.oninput = () => set(inp.value);
+      input = el("div", { class: "finput" }, inp);
+    }
+  }
+  return el("div", { class: "field" },
+    f.kind === "bool" ? el("div", { class: "flabel" }, el("span", { class: "key" }, f.key)) : el("div", { class: "flabel" }, f.label, el("span", { class: "key" }, f.key)),
+    input,
+    el("div", { class: "help" }, f.help ? f.help + " " : "", f.def != null ? el("span", {}, "Default: " + fmtDefault(f) + ".") : null));
+}
+// reserveBlock edits lend_reserve with a chart that places every account at
+// its time left and share left.
+function reserveBlock() {
+  const markers = (pts) => (status?.accounts || []).filter((a) => a.weekly_reset && !a.no_data).map((a) => {
+    const left = Math.max(0, new Date(a.weekly_reset) - Date.now()), keep = curveAt(pts, left), ok = a.weekly_remaining > keep;
+    return { left, share: a.weekly_remaining, ok, label: `${a.account}: ${pct(a.weekly_remaining)} of its week left, resets in ${until(a.weekly_reset)}. The reserve keeps ${pct(keep)} now, so it ${ok ? "may lend down to that (if its spare allows)" : "lends nothing"}.` };
+  });
+  return el("div", { class: "block" },
+    el("div", { class: "flabel" }, "Weekly reserve for owners ", el("span", { class: "key" }, "lend_reserve")),
+    el("div", { class: "help" }, "Keep part of every account's week for its own clients, whatever they are expected to use. The reserve can shrink as the reset nears: a fresh week stays mostly with its owners, a week about to expire is lent."),
+    curveEditor({
+      get: () => draft.lend_reserve, set: (v) => { draft.lend_reserve = v; markDirty(); },
+      offLabel: "No reserve", offText: "Off: accounts lend whatever the safety margin allows.",
+      seedConst: 0.3, seedCurve: (c) => ({ "7d": Math.max(c, 0.5), "8h": 0.01 }),
+      constUnit: "% of each account's week", pointUnit: "Kept for owners",
+      summary: (v) => curveSentence(v, "an account keeps", " of its week for its own clients", " all week") + " It lends only above that.",
+      cls: "reserve", aria: "Reserve kept for owners by time left until the weekly reset", markers,
+      legend: () => legend(["reserve-below", "kept for owners"], ["reserve-above", "may be lent, if spare"], ["dot ok", "an account now: above the reserve"], ["dot hold", "below it (lends nothing)"]),
+    }));
+}
+// capacityBlock edits the per-account plan size and pinned capacity.
+function capacityBlock() {
+  draft.capacity = draft.capacity || {}; draft.capacity_usd = draft.capacity_usd || {};
+  const rows = (status?.accounts || []).map((a) => ({ key: a.account.toLowerCase(), a }));
+  const known = new Set(rows.map((r) => r.key));
+  for (const k of new Set([...Object.keys(draft.capacity), ...Object.keys(draft.capacity_usd)])) if (!known.has(k)) rows.push({ key: k, a: null });
+  const num = (map, k, ph, title) => {
+    const inp = el("input", { type: "number", min: 0, step: "any", placeholder: ph, title, style: "width:100px", value: map[k] ?? "" });
+    inp.oninput = () => { const x = parseFloat(inp.value); inp.classList.toggle("bad", inp.value !== "" && !(x > 0)); if (inp.value === "") delete map[k]; else if (x > 0) map[k] = x; else return; markDirty(); };
+    return inp;
+  };
+  return el("div", { class: "block" },
+    el("div", { class: "flabel" }, "Per account ", el("span", { class: "key" }, "capacity · capacity_usd")),
+    el("div", { class: "help", style: "margin-bottom:6px" }, "Plan size is relative to a Pro plan (Max 5× = 5) and only sets the estimate until capacity is learned. A fixed weekly value replaces learning altogether. Leave both empty to learn."),
+    el("div", { class: "scroll" }, el("table", {},
+      el("tr", {}, el("th", {}, "Account"), el("th", {}, "Capacity now"), el("th", {}, "Plan size (× Pro)"), el("th", {}, "Fixed API $ per week")),
+      ...rows.map(({ key, a }) => el("tr", {},
+        el("td", {}, a ? [providerIcon(a.provider), " ", a.account] : [key, el("div", { class: "meta" }, "set under this name (e-mail, auth file name or auth ID)")]),
+        el("td", { title: a?.capacity_why || "" }, a ? `${usd(a.capacity_usd)}/week · ${a.capacity_source}` : "—"),
+        el("td", {}, num(draft.capacity, key, "1", "Relative plan size")),
+        el("td", {}, num(draft.capacity_usd, key, "learned", "Pin the weekly capacity in API $"))))),
+      rows.length ? null : el("div", { class: "meta" }, "No accounts yet.")));
+}
+function renderGroups() {
+  $("groups").replaceChildren(...GROUPS.map((g) => {
+    const fields = g.fields.filter((f) => !f.block), blocks = g.fields.filter((f) => f.block);
+    return el("div", { class: "card group" }, el("h3", {}, g.title), g.intro ? el("p", { class: "sub", style: "margin:0" }, g.intro) : null,
+      el("div", { class: "fields" }, ...fields.map(fieldBox)), ...blocks.map((b) => b.block()));
+  }));
+}
 
 function renderConfig(force) {
   if (!force) return;
   draft = structuredClone(cfgView.effective);
-  dirty = false;
-  $("cfgSource").textContent = cfgView.source === "runtime" ? `runtime config (saved ${when(cfgView.overlay_at)}${cfgView.overlay_note ? " — " + cfgView.overlay_note : ""})` : "config.yaml";
+  dirty = false; $("dirtyChip").classList.remove("on");
+  liveHooks = [];
+  $("cfgSource").textContent = cfgView.source === "runtime" ? `runtime settings (saved ${when(cfgView.overlay_at)}${cfgView.overlay_note ? " — " + cfgView.overlay_note : ""})` : "config.yaml";
   $("cfgErr").textContent = cfgView.overlay_error || "";
   $("knownAccounts").textContent = (cfgView.known_accounts || []).join(" · ") || "none yet";
   $("baseYaml").textContent = cfgView.base_yaml || "";
   $("cfgPromote").disabled = cfgView.source !== "runtime";
   renderBackups();
-  const g = $("globals"); g.replaceChildren();
-  for (const [p, type, help] of GLOBALS) {
-    const v = getPath(draft, p);
-    const inp = el("input", { type: type === "map" ? "text" : type, step: type === "number" ? "0.01" : null });
-    if (type === "checkbox") inp.checked = !!v;
-    else if (type === "map") inp.value = Object.entries(v || {}).map(([k, x]) => `${k}: ${x}`).join(", ");
-    else inp.value = v ?? "";
-    const parse = () => type === "checkbox" ? inp.checked : type === "number" ? parseFloat(inp.value)
-      : type === "map" ? Object.fromEntries(inp.value.split(",").map((x) => x.split(":").map((y) => y.trim())).filter(([k]) => k).map(([k, x]) => [k, parseFloat(x)]))
-      : inp.value;
-    inp.addEventListener("input", () => { setPath(draft, p, parse()); markDirty(); });
-    g.append(el("div", {}, el("label", { title: help }, p), inp, el("div", { class: "meta" }, help)));
-  }
+  renderGroups();
   renderBuckets(); renderClientsCfg(); unknownSig = ""; renderUnknown();
   $("rawJson").value = JSON.stringify(draft, null, 2);
 }
-function listEditor(values, onChange, suggestions) {
+function listEditor(values, onChange, suggestions, placeholder) {
   const box = el("div", { class: "row", style: "margin:4px 0" });
   const draw = () => {
     box.replaceChildren(...values.map((v, i) => el("span", { class: "chip", style: "font-size:13px" }, (i + 1) + ". " + v, " ",
       i > 0 ? el("a", { href: "#", title: "move up", onclick: (e) => { e.preventDefault(); [values[i - 1], values[i]] = [values[i], values[i - 1]]; onChange(); draw(); } }, "↑") : null, " ",
       el("a", { href: "#", title: "remove", onclick: (e) => { e.preventDefault(); values.splice(i, 1); onChange(); draw(); } }, "✕"))));
-    const inp = el("input", { list: suggestions ? "dl-" + suggestions.id : null, placeholder: "add…", style: "min-width:200px" });
+    const inp = el("input", { list: suggestions ? "dl-" + suggestions.id : null, placeholder: placeholder || "add…", style: "min-width:200px" });
     inp.addEventListener("change", () => { const v = inp.value.trim(); if (v && !values.includes(v)) { values.push(v); onChange(); draw(); } });
     box.append(inp);
     if (suggestions) box.append(el("datalist", { id: "dl-" + suggestions.id }, ...suggestions.items.map((s) => el("option", { value: s }))));
@@ -468,31 +924,83 @@ function listEditor(values, onChange, suggestions) {
   return box;
 }
 function accountIdents() { return (cfgView.known_accounts || []).map((a) => a.replace(/ \([^)]*\)$/, "")); }
+// limitBox edits one bucket lending limit: whom it covers and its share.
+function limitBox(name, target) {
+  const lim = draft.lend_limits[name];
+  const others = Object.keys(draft.buckets || {}).filter((b) => b !== name).sort();
+  const sel = el("select", {}, el("option", { value: "any" }, "every other bucket's clients (and clients with no bucket)"), ...others.map((b) => el("option", { value: b }, "clients of bucket " + b)));
+  sel.value = target;
+  sel.onchange = () => {
+    if (lim[sel.value] !== undefined) { toast("This bucket already has a limit for that target.", true); sel.value = target; return; }
+    lim[sel.value] = lim[target]; delete lim[target]; markDirty(); renderBuckets();
+  };
+  const live = el("div");
+  const drawLive = () => live.replaceChildren(...(status?.lend_limits || []).filter((l) => l.bucket === name && l.target === target).map((l) => el("div", { style: "margin-top:6px" },
+    el("div", { class: "meta" }, providerIcon(l.provider), ` Now: lent ${money(l.lent_usd, l.capacity_usd, l.provider)} of ${money(l.allowed_usd, l.capacity_usd, l.provider)} allowed (the bucket's week: ${weekText(l.capacity_usd, l.provider)})`, l.open ? "" : " — limit reached"),
+    limitBar(l))));
+  drawLive(); liveHooks.push({ node: live, fn: drawLive });
+  return el("div", { class: "limit" },
+    el("div", { class: "row", style: "margin:0;align-items:center" }, el("span", { class: "meta" }, "Lend to"), sel, el("span", { class: "spacer" }),
+      el("button", { class: "sec small danger", onclick: () => { delete lim[target]; if (!Object.keys(lim).length) delete draft.lend_limits[name]; markDirty(); renderBuckets(); } }, "Remove limit")),
+    curveEditor({
+      get: () => lim[target], set: (v) => { lim[target] = v; markDirty(); },
+      seedConst: 0.2, seedCurve: (c) => ({ "7d": Math.min(c, 0.1), "8h": Math.max(c, 0.5) }),
+      constUnit: "% of the bucket's week", pointUnit: "Most it may lend",
+      summary: (v) => curveSentence(v, "those clients may use at most", " of this bucket's week", ", every week"),
+      cls: "limit", aria: "Most the bucket may lend by time left until the weekly reset",
+      legend: () => legend(["limit-below", "may be lent (if spare)"], ["limit-above", "never lent to them"]),
+    }),
+    live);
+}
 function renderBuckets() {
   const b = $("buckets"); b.replaceChildren();
+  draft.lend_limits = draft.lend_limits || {};
   for (const name of Object.keys(draft.buckets || {}).sort()) {
-    b.append(el("div", { class: "card", style: "margin-bottom:8px" },
-      el("h3", {}, "bucket ", el("span", { class: "mono" }, name), el("span", { class: "spacer" }),
-        el("button", { class: "sec danger", onclick: () => { delete draft.buckets[name]; for (const c of Object.values(draft.clients)) c.buckets = (c.buckets || []).filter((x) => x !== name); markDirty(); renderBuckets(); renderClientsCfg(); } }, "delete")),
-      listEditor(draft.buckets[name], markDirty, { id: "acc-" + name, items: accountIdents() })));
+    const lim = draft.lend_limits[name] || {};
+    const targets = Object.keys(lim).sort((x, y) => (x === "any" ? -1 : y === "any" ? 1 : x.localeCompare(y)));
+    const addLimit = () => {
+      const free = ["any", ...Object.keys(draft.buckets).filter((x) => x !== name).sort()].find((t) => lim[t] === undefined);
+      if (!free) return toast("Every target already has a limit.", true);
+      draft.lend_limits[name] = lim; lim[free] = 0.2; markDirty(); renderBuckets();
+    };
+    b.append(el("div", { class: "card", style: "margin-bottom:10px" },
+      el("h3", {}, "Bucket ", el("span", { class: "mono" }, name), el("span", { class: "spacer" }),
+        el("button", { class: "sec small danger", onclick: () => {
+          if (!confirm(`Delete bucket ${name}? Clients stop owning it and its lending limits go too.`)) return;
+          delete draft.buckets[name]; delete draft.lend_limits[name];
+          for (const l of Object.values(draft.lend_limits)) delete l[name];
+          for (const c of [...Object.values(draft.clients || {}), draft.default_client || {}]) c.buckets = (c.buckets || []).filter((x) => x !== name);
+          markDirty(); renderBuckets(); renderClientsCfg();
+        } }, "Delete bucket")),
+      el("label", {}, "Accounts"),
+      listEditor(draft.buckets[name], markDirty, { id: "acc-" + name, items: accountIdents() }, "add an account…"),
+      el("div", { class: "block", style: "margin-top:8px;padding-top:8px" },
+        el("div", { class: "flabel" }, "Lending limits ", el("span", { class: "key" }, "lend_limits." + name)),
+        el("div", { class: "help" }, `The most clients of other buckets may use of this bucket's week, counting its accounts' capacity together (separately per provider). The amount lent restarts with each account's weekly reset. Limits hold for every loan, including the last-resort fallback; clients that own ${name} are never limited.`),
+        targets.length ? null : el("div", { class: "meta", style: "margin-top:4px" }, "No limit: it lends whatever its spare allows."),
+        ...targets.map((t) => limitBox(name, t)),
+        el("button", { class: "sec small", style: "margin-top:6px", onclick: addLimit }, "+ Add lending limit"))));
   }
 }
+const POLICY_OPTIONS = [["any", "Use any other usable account"], ["wait", "Wait for a refill (hold, then answer 429)"], ["fail", "Fail at once"]];
 function renderClientsCfg() {
   const box = $("clientsCfg"); box.replaceChildren();
   const bucketNames = Object.keys(draft.buckets || {}).sort();
   const clientCard = (name, c, isDefault) => {
-    const pol = el("select", {}, ...["any", "wait", "fail"].map((p) => el("option", { value: p }, p)));
+    const pol = el("select", {}, ...POLICY_OPTIONS.map(([p, l]) => el("option", { value: p }, l)));
     pol.value = c.on_exhausted || "any"; pol.onchange = () => { c.on_exhausted = pol.value; markDirty(); };
     const borrow = el("input", { type: "checkbox" }); borrow.checked = c.borrow !== false; borrow.onchange = () => { c.borrow = borrow.checked; markDirty(); };
     c.buckets = c.buckets || []; c.keys = c.keys || [];
-    const keys = el("textarea", { style: "min-height:50px" }); keys.value = c.keys.join("\n");
+    const keys = el("textarea", { style: "min-height:50px", placeholder: "one 64-hex key hash per line" }); keys.value = c.keys.join("\n");
     keys.addEventListener("input", () => { c.keys = keys.value.split(/\s+/).map((s) => s.trim().toLowerCase()).filter(Boolean); markDirty(); });
     return el("div", { class: "card", style: "margin-bottom:8px" },
-      el("h3", {}, isDefault ? "default client (unknown keys)" : el("span", { class: "mono" }, name), el("span", { class: "spacer" }),
-        isDefault ? null : el("button", { class: "sec danger", onclick: () => { delete draft.clients[name]; markDirty(); renderClientsCfg(); } }, "delete")),
-      el("div", { class: "row" }, el("div", {}, el("label", {}, "when exhausted"), pol), el("div", {}, el("label", {}, "borrow spare from other buckets"), borrow)),
-      el("label", {}, "buckets (preference order)"), listEditor(c.buckets, markDirty, { id: "bk-" + (name || "default"), items: bucketNames }),
-      isDefault ? null : el("div", {}, el("label", {}, "keys (one per line)"), keys));
+      el("h3", {}, isDefault ? "Default client (keys that belong to no client)" : ["Client ", el("span", { class: "mono" }, name)], el("span", { class: "spacer" }),
+        isDefault ? null : el("button", { class: "sec small danger", onclick: () => { if (!confirm(`Delete client ${name}? Its keys will use the default client.`)) return; delete draft.clients[name]; markDirty(); renderClientsCfg(); } }, "Delete client")),
+      el("div", { class: "row" },
+        el("div", {}, el("label", {}, "When its own buckets run out"), pol),
+        el("div", {}, el("label", { class: "check" }, borrow, "May borrow spare quota from other buckets"))),
+      el("label", {}, "Buckets it owns, most preferred first"), listEditor(c.buckets, markDirty, { id: "bk-" + (name || "default"), items: bucketNames }, "add a bucket…"),
+      isDefault ? null : el("div", {}, el("label", {}, "API keys (caller scope or sha256 of the key, one per line)"), keys));
   };
   for (const name of Object.keys(draft.clients || {}).sort()) box.append(clientCard(name, draft.clients[name], false));
   draft.default_client = draft.default_client || {};
@@ -511,20 +1019,21 @@ function renderUnknown() {
       el("div", { class: "row", style: "margin:0" }, el("div", {}, el("strong", {}, k.alias), el("div", { class: "meta" }, "last seen " + when(k.last_seen)), el("div", { class: "mono why" }, k.scope)),
         inp, el("button", { class: "act", onclick: async () => {
           if (!inp.value.trim()) return toast("Enter a client name", true);
+          if (dirty && !confirm("Assigning saves at once and drops your unsaved changes. Continue?")) return;
           try { cfgView = await api("/config", { assign_key: { scope: k.scope, client: inp.value.trim() }, note: "assign " + k.alias + " → " + inp.value.trim() }); dirty = false; toast("Key assigned"); refresh(true); } catch (e) { toast(e.message, true); }
-        } }, "Assign"))));
+        } }, "Assign to client"))));
   }
   box.append(el("datalist", { id: "dl-clients" }, ...Object.keys(draft?.clients || {}).map((c) => el("option", { value: c }))));
 }
-$("addBucket").onclick = () => { const n = prompt("Bucket name"); if (n && !draft.buckets[n]) { draft.buckets[n] = []; markDirty(); renderBuckets(); renderClientsCfg(); } };
-$("addClient").onclick = () => { const n = prompt("Client name (e.g. machine name)"); if (n && !draft.clients[n]) { draft.clients[n] = { keys: [], buckets: [], on_exhausted: "any", borrow: true }; markDirty(); renderClientsCfg(); } };
+$("addBucket").onclick = () => { const n = prompt("Bucket name (e.g. work, personal)")?.trim(); if (n && !draft.buckets[n]) { draft.buckets[n] = []; markDirty(); renderBuckets(); renderClientsCfg(); } };
+$("addClient").onclick = () => { const n = prompt("Client name (e.g. a machine or project)")?.trim(); if (n && !draft.clients[n]) { draft.clients[n] = { keys: [], buckets: [], on_exhausted: "any", borrow: true }; markDirty(); renderClientsCfg(); } };
 async function saveConfig(doc, note) {
   try { cfgView = await api("/config", { config: doc, note }); }
   catch (e) {
     if (!/save with force/.test(e.message) || !confirm(e.message + "\n\nSave anyway?")) { $("cfgErr").textContent = e.message; toast("Not saved", true); return; }
     try { cfgView = await api("/config", { config: doc, note, force: true }); } catch (e2) { $("cfgErr").textContent = e2.message; toast("Not saved", true); return; }
   }
-  dirty = false; renderConfig(true); toast("Runtime config saved and applied"); refresh();
+  dirty = false; await refresh(true); toast("Saved and applied");
 }
 $("cfgSave").onclick = () => saveConfig(draft, $("cfgNote").value);
 $("rawApply").onclick = async () => {
@@ -532,9 +1041,10 @@ $("rawApply").onclick = async () => {
   await saveConfig(doc, $("cfgNote").value || "raw JSON edit");
 };
 $("cfgRevert").onclick = async () => {
-  if (!confirm("Drop the runtime config and use config.yaml again?")) return;
-  try { cfgView = await api("/config", { revert: true }); dirty = false; renderConfig(true); toast("Reverted to config.yaml"); refresh(); } catch (e) { toast(e.message, true); }
+  if (!confirm("Drop the runtime settings and use config.yaml again?")) return;
+  try { cfgView = await api("/config", { revert: true }); dirty = false; await refresh(true); toast("Back on config.yaml"); } catch (e) { toast(e.message, true); }
 };
+addEventListener("beforeunload", (e) => { if (dirty) e.preventDefault(); });
 
 // config.yaml is read and written with CPA's GET/PUT /v0/management/config.yaml
 // (management proxies such as CPA Manager Plus pass those through, unlike
@@ -560,19 +1070,19 @@ async function writeConfigYAML(request, dropOverlay) {
   return api("/config", { adopt: { section: v.section, drop_overlay: dropOverlay } });
 }
 $("cfgPromote").onclick = async () => {
-  if (dirty && !confirm("You have unsaved edits; they will not be included. Continue?")) return;
-  if (!confirm("Write the runtime config into config.yaml and stop using the runtime config? The current config.yaml section is kept as a backup.")) return;
+  if (dirty && !confirm("You have unsaved changes; they will not be included. Continue?")) return;
+  if (!confirm("Write the runtime settings into config.yaml and stop using the runtime copy? The current config.yaml section is kept as a backup.")) return;
   try {
     cfgView = await writeConfigYAML((y) => ({ promote: { config_yaml: y } }), true);
-    dirty = false; renderConfig(true); toast("config.yaml updated; runtime config ended"); refresh();
+    dirty = false; await refresh(true); toast("config.yaml updated; runtime settings ended");
   } catch (e) { $("cfgErr").textContent = e.message; toast("Not made permanent", true); }
 };
 async function restoreBackup(b) {
-  const still = cfgView.source === "runtime" ? "\n\nThe runtime config keeps winning until you revert it." : "";
+  const still = cfgView.source === "runtime" ? "\n\nThe runtime settings keep taking precedence until you revert them." : "";
   if (!confirm(`Replace the config.yaml section with the backup from ${new Date(b.at).toLocaleString()}? The current section is backed up first.` + still)) return;
   try {
     cfgView = await writeConfigYAML((y) => ({ restore: { at: b.at, config_yaml: y } }), false);
-    dirty = false; renderConfig(true); toast("Backup restored to config.yaml"); refresh();
+    dirty = false; await refresh(true); toast("Backup restored to config.yaml");
   } catch (e) { $("cfgErr").textContent = e.message; toast("Not restored", true); }
 }
 function renderBackups() {
@@ -589,15 +1099,18 @@ function renderBackups() {
   }
 }
 
-// --- loop ---------------------------------------------------------------
+// --- loop -----------------------------------------------------------------
 async function refresh(withConfig) {
   if (!key) return showLogin();
   try {
     status = await api("/status?decisions=200");
     if (withConfig || !cfgView) cfgView = await api("/config");
-    $("meta").textContent = `${status.plugin} ${status.version} · ${status.mode} · config: ${status.config_source} · spare factor ${status.spare_factor} · history ${status.history} · ${status.session_bindings} sessions · ${new Date().toLocaleTimeString()}`;
+    const src = String(status.config_source || "").startsWith("runtime") ? "runtime settings" : "config.yaml";
+    $("meta").textContent = `${status.plugin} ${status.version} · ${status.mode === "active" ? "routing" : "observing only"} · settings from ${src} · safety margin ${status.spare_factor}× · history ${status.history} · ${status.session_bindings} pinned session${status.session_bindings === 1 ? "" : "s"} · updated ${new Date().toLocaleTimeString()}`;
     $("units").value = units();
-    renderOverview(); renderTraffic(); renderOverrides(); renderConfig(!!withConfig); if (draft) renderUnknown();
+    renderOverview(); renderTraffic(); renderOverrides();
+    if (withConfig || !draft) renderConfig(true); else runLiveHooks();
+    if (draft) renderUnknown();
   } catch (e) { if (e.message !== "unauthorized") toast("Refresh failed: " + e.message, true); }
 }
 function schedule() { clearInterval(timer); if ($("auto").checked) timer = setInterval(() => refresh(false), 5000); }

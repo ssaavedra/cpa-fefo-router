@@ -51,16 +51,16 @@ type ClientConfig struct {
 	Borrow *bool `yaml:"borrow" json:"borrow"`
 }
 
-// ReservePoint says: with Left until the weekly reset, an account lends
-// only while more than Keep of its week is left.
+// ReservePoint is one point of a share-of-the-week curve: with Left until the
+// weekly reset, the share is Keep. In lend_reserve it is the share an account
+// keeps for its home clients; in lend_limits the share a bucket may lend.
 type ReservePoint struct {
 	Left time.Duration
 	Keep float64
 }
 
-// reserveAt returns the share of the week an account keeps with left until
-// its weekly reset: linear between points, the nearest point's share outside
-// them, 0 without points.
+// reserveAt returns a curve's share with left until the weekly reset: linear
+// between points, the nearest point's share outside them, 0 without points.
 func reserveAt(points []ReservePoint, left time.Duration) float64 {
 	if len(points) == 0 {
 		return 0
@@ -90,6 +90,75 @@ func parseDuration(s string) (time.Duration, error) {
 		return time.Duration(n * float64(24*time.Hour)), nil
 	}
 	return time.ParseDuration(s)
+}
+
+// parseCurve reads a share of the week that may change toward the weekly
+// reset: a number (the same share all week) or a map from time left to share
+// such as {7d: 0.7, 8h: 0.01}. Points come back sorted by time left.
+func parseCurve(name string, v any) ([]ReservePoint, []string) {
+	var errs []string
+	share := func(key string, x any) (float64, bool) {
+		f, ok := toFloat(x)
+		if !ok || f < 0 || f > 1 {
+			errs = append(errs, fmt.Sprintf("%s%s: share must be a number in [0, 1], got %v", name, key, x))
+			return 0, false
+		}
+		return f, true
+	}
+	var m map[string]any
+	switch x := v.(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		m = x
+	case map[any]any:
+		m = map[string]any{}
+		for k, y := range x {
+			m[fmt.Sprint(k)] = y
+		}
+	default:
+		f, ok := share("", v)
+		if !ok {
+			return nil, errs
+		}
+		return []ReservePoint{{Left: 0, Keep: f}}, nil
+	}
+	var pts []ReservePoint
+	for left, x := range m {
+		d, err := parseDuration(left)
+		if err != nil || d < 0 {
+			errs = append(errs, fmt.Sprintf("%s: want a time left such as 7d or 8h, got %q", name, left))
+			continue
+		}
+		f, ok := share("."+left, x)
+		if !ok {
+			continue
+		}
+		for _, p := range pts {
+			if p.Left == d {
+				errs = append(errs, fmt.Sprintf("%s.%s: time left given twice", name, left))
+			}
+		}
+		pts = append(pts, ReservePoint{Left: d, Keep: f})
+	}
+	sort.Slice(pts, func(i, j int) bool { return pts[i].Left < pts[j].Left })
+	return pts, errs
+}
+
+func toFloat(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case float32:
+		return float64(x), true
+	case int:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	case uint64:
+		return float64(x), true
+	}
+	return 0, false
 }
 
 // BorrowEnabled reports whether the client may use other buckets' spare.
@@ -130,6 +199,11 @@ type Config struct {
 	// home clients, by time left until the weekly reset, sorted by Left.
 	// Shares between two points are interpolated linearly. Empty keeps none.
 	LendReserve []ReservePoint `yaml:"-" json:"-"`
+	// LendLimits caps what a bucket lends: lending bucket → target (another
+	// bucket, or LendAny) → the share of the bucket's week (its accounts'
+	// capacity summed) that the target's clients may use this weekly window,
+	// by time left until each account's reset.
+	LendLimits map[string]map[string][]ReservePoint `yaml:"-" json:"-"`
 	// MinRemaining blocks an account whose 5h or weekly window has less left.
 	MinRemaining float64 `yaml:"min_remaining" json:"min_remaining"`
 	// MinHistory is how much usage history a client needs before its demand
@@ -218,29 +292,30 @@ func DefaultConfig() Config {
 
 // rawConfig mirrors Config with durations as strings so "30m" parses.
 type rawConfig struct {
-	Mode              *string                 `yaml:"mode"`
-	SpareFactor       *float64                `yaml:"spare_factor"`
-	MinSpare          *float64                `yaml:"min_spare"`
-	LendReserve       map[string]float64      `yaml:"lend_reserve"`
-	MinRemaining      *float64                `yaml:"min_remaining"`
-	MinHistory        *string                 `yaml:"min_history"`
-	StaleAfter        *string                 `yaml:"stale_after"`
-	ProbeInterval     *string                 `yaml:"probe_interval"`
-	SessionTTL        *string                 `yaml:"session_ttl"`
-	AllowExtraUsage   *bool                   `yaml:"allow_extra_usage"`
-	ScopedFamilies    *[]string               `yaml:"scoped_families"`
-	RefreshInterval   *string                 `yaml:"refresh_interval"`
-	UsagePollInterval *string                 `yaml:"usage_poll_interval"`
-	StateFile         *string                 `yaml:"state_file"`
-	LogDecisions      *bool                   `yaml:"log_decisions"`
-	DisplayUnits      *string                 `yaml:"display_units"`
-	Buckets           map[string][]string     `yaml:"buckets"`
-	Capacity          map[string]float64      `yaml:"capacity"`
-	CapacityUSD       map[string]float64      `yaml:"capacity_usd"`
-	DefaultUnitUSD    *float64                `yaml:"default_unit_usd"`
-	LearnMinDelta     *float64                `yaml:"learn_min_delta"`
-	Clients           map[string]ClientConfig `yaml:"clients"`
-	DefaultClient     *ClientConfig           `yaml:"default_client"`
+	Mode              *string                   `yaml:"mode"`
+	SpareFactor       *float64                  `yaml:"spare_factor"`
+	MinSpare          *float64                  `yaml:"min_spare"`
+	LendReserve       any                       `yaml:"lend_reserve"`
+	LendLimits        map[string]map[string]any `yaml:"lend_limits"`
+	MinRemaining      *float64                  `yaml:"min_remaining"`
+	MinHistory        *string                   `yaml:"min_history"`
+	StaleAfter        *string                   `yaml:"stale_after"`
+	ProbeInterval     *string                   `yaml:"probe_interval"`
+	SessionTTL        *string                   `yaml:"session_ttl"`
+	AllowExtraUsage   *bool                     `yaml:"allow_extra_usage"`
+	ScopedFamilies    *[]string                 `yaml:"scoped_families"`
+	RefreshInterval   *string                   `yaml:"refresh_interval"`
+	UsagePollInterval *string                   `yaml:"usage_poll_interval"`
+	StateFile         *string                   `yaml:"state_file"`
+	LogDecisions      *bool                     `yaml:"log_decisions"`
+	DisplayUnits      *string                   `yaml:"display_units"`
+	Buckets           map[string][]string       `yaml:"buckets"`
+	Capacity          map[string]float64        `yaml:"capacity"`
+	CapacityUSD       map[string]float64        `yaml:"capacity_usd"`
+	DefaultUnitUSD    *float64                  `yaml:"default_unit_usd"`
+	LearnMinDelta     *float64                  `yaml:"learn_min_delta"`
+	Clients           map[string]ClientConfig   `yaml:"clients"`
+	DefaultClient     *ClientConfig             `yaml:"default_client"`
 	Pacing            *struct {
 		Enabled  *bool   `yaml:"enabled"`
 		Horizon  *string `yaml:"horizon"`
@@ -280,7 +355,7 @@ func ParseConfig(raw []byte) (Config, error) {
 		if v == nil {
 			return
 		}
-		d, err := time.ParseDuration(strings.TrimSpace(*v))
+		d, err := parseDuration(*v)
 		if err != nil || d < min {
 			errs = append(errs, fmt.Sprintf("%s: want a duration >= %s, got %q", name, min, *v))
 			return
@@ -305,23 +380,8 @@ func ParseConfig(raw []byte) (Config, error) {
 	if rc.MinSpare != nil {
 		cfg.MinSpare = *rc.MinSpare
 	}
-	for left, keep := range rc.LendReserve {
-		d, err := parseDuration(left)
-		switch {
-		case err != nil || d < 0:
-			errs = append(errs, fmt.Sprintf("lend_reserve: want a time left such as 7d or 8h, got %q", left))
-		case keep < 0 || keep > 1:
-			errs = append(errs, fmt.Sprintf("lend_reserve.%s: share must be in [0, 1]", left))
-		default:
-			for _, p := range cfg.LendReserve {
-				if p.Left == d {
-					errs = append(errs, fmt.Sprintf("lend_reserve.%s: time left given twice", left))
-				}
-			}
-			cfg.LendReserve = append(cfg.LendReserve, ReservePoint{Left: d, Keep: keep})
-		}
-	}
-	sort.Slice(cfg.LendReserve, func(i, j int) bool { return cfg.LendReserve[i].Left < cfg.LendReserve[j].Left })
+	pts, perrs := parseCurve("lend_reserve", rc.LendReserve)
+	cfg.LendReserve, errs = pts, append(errs, perrs...)
 	if rc.MinRemaining != nil {
 		if *rc.MinRemaining < 0 || *rc.MinRemaining >= 1 {
 			errs = append(errs, "min_remaining: must be in [0, 1)")
@@ -335,7 +395,7 @@ func ParseConfig(raw []byte) (Config, error) {
 	dur("session_ttl", rc.SessionTTL, &cfg.SessionTTL, time.Minute)
 	dur("refresh_interval", rc.RefreshInterval, &cfg.RefreshInterval, 10*time.Second)
 	if v := rc.UsagePollInterval; v != nil {
-		if d, err := time.ParseDuration(strings.TrimSpace(*v)); err == nil && d == 0 {
+		if d, err := parseDuration(*v); err == nil && d == 0 {
 			cfg.UsagePollInterval = 0
 		} else {
 			dur("usage_poll_interval", v, &cfg.UsagePollInterval, time.Minute)
@@ -365,7 +425,7 @@ func ParseConfig(raw []byte) (Config, error) {
 		if u, ok := parseUnits(*rc.DisplayUnits); ok {
 			cfg.DisplayUnits = u
 		} else {
-			errs = append(errs, fmt.Sprintf("display_units: want usd or tokens, got %q", *rc.DisplayUnits))
+			errs = append(errs, fmt.Sprintf("display_units: want usd, tokens, pct_relative or pct_absolute, got %q", *rc.DisplayUnits))
 		}
 	}
 	if rc.Pacing != nil {
@@ -408,6 +468,34 @@ func ParseConfig(raw []byte) (Config, error) {
 		for _, m := range members {
 			if m = strings.TrimSpace(m); m != "" {
 				cfg.Buckets[name] = append(cfg.Buckets[name], m)
+			}
+		}
+	}
+	cfg.LendLimits = map[string]map[string][]ReservePoint{}
+	for bucket, targets := range rc.LendLimits {
+		bucket = strings.TrimSpace(bucket)
+		if _, ok := cfg.Buckets[bucket]; !ok {
+			errs = append(errs, fmt.Sprintf("lend_limits.%s: unknown bucket", bucket))
+			continue
+		}
+		for target, v := range targets {
+			target = strings.TrimSpace(target)
+			name := "lend_limits." + bucket + "." + target
+			_, known := cfg.Buckets[target]
+			switch {
+			case target == bucket:
+				errs = append(errs, name+": a bucket does not lend to itself")
+			case target != LendAny && !known:
+				errs = append(errs, fmt.Sprintf("%s: unknown bucket %q (name a bucket, or %s for every other bucket)", name, target, LendAny))
+			default:
+				pts, perrs := parseCurve(name, v)
+				errs = append(errs, perrs...)
+				if len(perrs) == 0 && len(pts) > 0 {
+					if cfg.LendLimits[bucket] == nil {
+						cfg.LendLimits[bucket] = map[string][]ReservePoint{}
+					}
+					cfg.LendLimits[bucket][target] = pts
+				}
 			}
 		}
 	}
@@ -475,15 +563,20 @@ func ParseConfig(raw []byte) (Config, error) {
 	return cfg, nil
 }
 
-// Display units for status text and the UI.
+// Display units for status text and the UI. The two percent units show
+// API-equivalent dollars as a share of a week: of the thing shown (an
+// account, a pool, a bucket) for pct_relative, of the provider's largest
+// account for pct_absolute.
 const (
-	UnitsUSD    = "usd"
-	UnitsTokens = "tokens"
+	UnitsUSD         = "usd"
+	UnitsTokens      = "tokens"
+	UnitsPctRelative = "pct_relative"
+	UnitsPctAbsolute = "pct_absolute"
 )
 
 func parseUnits(s string) (string, bool) {
 	switch u := strings.ToLower(strings.TrimSpace(s)); u {
-	case UnitsUSD, UnitsTokens:
+	case UnitsUSD, UnitsTokens, UnitsPctRelative, UnitsPctAbsolute:
 		return u, true
 	}
 	return "", false

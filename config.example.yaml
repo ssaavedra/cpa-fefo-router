@@ -19,7 +19,8 @@ plugins:
       # Share of its week an account keeps for its home clients, by time left
       # until its weekly reset (linear in between; nearest point outside).
       # Here: lend only above 70% left with a full week to go, down to 1% left
-      # with 8h to go. Omit to keep no reserve.
+      # with 8h to go. A single number keeps the same share all week. Omit to
+      # keep no reserve.
       # lend_reserve: {7d: 0.7, 8h: 0.01}
       min_history: 6h           # demand history needed before anything is lent
       min_remaining: 0.01       # a window with less left blocks the account
@@ -28,7 +29,10 @@ plugins:
       stale_after: 30m          # limit flags without a reset time expire after this
       allow_extra_usage: false  # never serve from paid overage (also keeps Fable off plans without an allowance)
       log_decisions: true
-      display_units: usd        # usd | tokens: default units of the text status and the UI
+      # Default units of the text status and the UI: usd | tokens |
+      # pct_relative (share of the thing's own week) | pct_absolute (share of
+      # the provider's largest account's week).
+      display_units: usd
 
       # Each Claude account's usage report (Fable allowance, extra usage) is
       # fetched through CPA this often; 0 disables.
@@ -48,6 +52,15 @@ plugins:
         work:     [me@work.example]
         side:     [me@side.example]
         personal: [me@personal.example]
+
+      # Most of a bucket's week (its accounts' capacity summed, per provider)
+      # that other buckets' clients may use per week, whatever its spare.
+      # Target: a bucket (its clients) or any (every borrower). Share: a
+      # number, or a curve by time left until the reset as in lend_reserve.
+      # lend_limits:
+      #   work:
+      #     any: 0.2
+      #     personal: {7d: 0.02, 8h: 0.4}
 
       # Weekly capacity in dollars is learned per account from its traffic.
       # Until then: capacity (relative, Pro = 1) × median learned $ per unit,

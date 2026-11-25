@@ -251,6 +251,12 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 		used := 1 - w.Remaining
 		cur := usedSample{At: at, Window: w.Name, Used: used, Reset: w.ResetAt}
 		if prev := st.LastWeekly; prev != nil {
+			// Concurrent responses arrive out of order, so readings flap
+			// between neighbouring percentages. The baseline only rises
+			// within a period, or every flap would count as new use.
+			if sameReset(prev.Reset, w.ResetAt) && prev.Used > used {
+				cur.Used = prev.Used
+			}
 			delta := 0.0
 			switch {
 			case sameReset(prev.Reset, w.ResetAt) && used > prev.Used:

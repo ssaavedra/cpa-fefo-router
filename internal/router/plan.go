@@ -366,9 +366,15 @@ func (pc *planContext) expected(e *eval) {
 		total += reaching
 		parts = append(parts, fmt.Sprintf("%s $%.2f/h×%s→$%.2f", client, d.PerHour, fmtDur(time.Duration(hours*float64(time.Hour))), reaching))
 	}
-	e.Expected = total
-	e.Spare = e.remaining() - pc.factor*total
-	e.SpareWhy = fmt.Sprintf("left $%.2f − %.1f×expected $%.2f", e.remaining(), pc.factor, total)
+	// The account cannot serve more than it has left before it resets; the
+	// rest of the need falls on other accounts. Capping changes no lending
+	// decision (lending needs Expected < remaining / factor).
+	e.Expected = math.Min(total, math.Max(0, e.remaining()))
+	e.Spare = e.remaining() - pc.factor*e.Expected
+	e.SpareWhy = fmt.Sprintf("left $%.2f − %.1f×expected $%.2f", e.remaining(), pc.factor, e.Expected)
+	if total > e.Expected {
+		parts = append(parts, fmt.Sprintf("need $%.2f is more than is left", total))
+	}
 	if len(parts) > 0 {
 		e.SpareWhy += " (" + strings.Join(parts, ", ") + ")"
 	}

@@ -22,6 +22,7 @@ plugins:
       # with 8h to go. A single number keeps the same share all week. Omit to
       # keep no reserve.
       # lend_reserve: {7d: 0.7, 8h: 0.01}
+      lend_min_short: 0.3       # stop lending while the 5h window has less than this left (0: off)
       min_history: 6h           # demand history needed before anything is lent
       min_remaining: 0.01       # a window with less left blocks the account
       session_ttl: 1h           # how long a (key, session) stays pinned to an account

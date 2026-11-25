@@ -19,6 +19,7 @@ type ConfigDoc struct {
 	// LendLimits is lending bucket → target bucket (or "any") → share, each
 	// share as in LendReserve.
 	LendLimits        map[string]map[string]any `json:"lend_limits"`
+	LendMinShort      float64                   `json:"lend_min_short"`
 	MinRemaining      float64                   `json:"min_remaining"`
 	MinHistory        string                    `json:"min_history"`
 	StaleAfter        string                    `json:"stale_after"`
@@ -102,7 +103,7 @@ func clientDoc(c ClientConfig) ClientDoc {
 // Doc converts a Config into its editable form.
 func (c Config) Doc() ConfigDoc {
 	d := ConfigDoc{
-		SpareFactor: c.SpareFactor, MinSpare: c.MinSpare, MinRemaining: c.MinRemaining,
+		SpareFactor: c.SpareFactor, MinSpare: c.MinSpare, LendMinShort: c.LendMinShort, MinRemaining: c.MinRemaining,
 		MinHistory: durStr(c.MinHistory), StaleAfter: durStr(c.StaleAfter), ProbeInterval: durStr(c.ProbeInterval),
 		SessionTTL: durStr(c.SessionTTL), UsagePollInterval: durStr(c.UsagePollInterval), AllowExtraUsage: c.AllowExtraUsage, LogDecisions: c.LogDecisions,
 		Buckets: map[string][]string{}, Capacity: map[string]float64{}, CapacityUSD: map[string]float64{}, Clients: map[string]ClientDoc{},

@@ -16,6 +16,11 @@ plugins:
       # its model's API rates).
       spare_factor: 1.5
       min_spare: 0.03           # spare needed to start lending, share of the account's week
+      # Share of its week an account keeps for its home clients, by time left
+      # until its weekly reset (linear in between; nearest point outside).
+      # Here: lend only above 70% left with a full week to go, down to 1% left
+      # with 8h to go. Omit to keep no reserve.
+      # lend_reserve: {7d: 0.7, 8h: 0.01}
       min_history: 6h           # demand history needed before anything is lent
       min_remaining: 0.01       # a window with less left blocks the account
       session_ttl: 1h           # how long a (key, session) stays pinned to an account

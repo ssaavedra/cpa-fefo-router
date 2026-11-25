@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,47 @@ type ClientConfig struct {
 	Borrow *bool `yaml:"borrow" json:"borrow"`
 }
 
+// ReservePoint says: with Left until the weekly reset, an account lends
+// only while more than Keep of its week is left.
+type ReservePoint struct {
+	Left time.Duration
+	Keep float64
+}
+
+// reserveAt returns the share of the week an account keeps with left until
+// its weekly reset: linear between points, the nearest point's share outside
+// them, 0 without points.
+func reserveAt(points []ReservePoint, left time.Duration) float64 {
+	if len(points) == 0 {
+		return 0
+	}
+	if left <= points[0].Left {
+		return points[0].Keep
+	}
+	for i := 1; i < len(points); i++ {
+		a, b := points[i-1], points[i]
+		if left <= b.Left {
+			f := float64(left-a.Left) / float64(b.Left-a.Left)
+			return a.Keep + f*(b.Keep-a.Keep)
+		}
+	}
+	return points[len(points)-1].Keep
+}
+
+// parseDuration reads a Go duration, or a whole or fractional number of
+// days such as "7d" or "1.5d".
+func parseDuration(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.ParseFloat(days, 64)
+		if err != nil {
+			return 0, err
+		}
+		return time.Duration(n * float64(24*time.Hour)), nil
+	}
+	return time.ParseDuration(s)
+}
+
 // BorrowEnabled reports whether the client may use other buckets' spare.
 func (c ClientConfig) BorrowEnabled() bool { return c.Borrow == nil || *c.Borrow }
 
@@ -84,6 +126,10 @@ type Config struct {
 	// account's weekly capacity, so rounding noise does not flip accounts in
 	// and out.
 	MinSpare float64 `yaml:"min_spare" json:"min_spare"`
+	// LendReserve is the share of its weekly window an account keeps for its
+	// home clients, by time left until the weekly reset, sorted by Left.
+	// Shares between two points are interpolated linearly. Empty keeps none.
+	LendReserve []ReservePoint `yaml:"-" json:"-"`
 	// MinRemaining blocks an account whose 5h or weekly window has less left.
 	MinRemaining float64 `yaml:"min_remaining" json:"min_remaining"`
 	// MinHistory is how much usage history a client needs before its demand
@@ -175,6 +221,7 @@ type rawConfig struct {
 	Mode              *string                 `yaml:"mode"`
 	SpareFactor       *float64                `yaml:"spare_factor"`
 	MinSpare          *float64                `yaml:"min_spare"`
+	LendReserve       map[string]float64      `yaml:"lend_reserve"`
 	MinRemaining      *float64                `yaml:"min_remaining"`
 	MinHistory        *string                 `yaml:"min_history"`
 	StaleAfter        *string                 `yaml:"stale_after"`
@@ -258,6 +305,23 @@ func ParseConfig(raw []byte) (Config, error) {
 	if rc.MinSpare != nil {
 		cfg.MinSpare = *rc.MinSpare
 	}
+	for left, keep := range rc.LendReserve {
+		d, err := parseDuration(left)
+		switch {
+		case err != nil || d < 0:
+			errs = append(errs, fmt.Sprintf("lend_reserve: want a time left such as 7d or 8h, got %q", left))
+		case keep < 0 || keep > 1:
+			errs = append(errs, fmt.Sprintf("lend_reserve.%s: share must be in [0, 1]", left))
+		default:
+			for _, p := range cfg.LendReserve {
+				if p.Left == d {
+					errs = append(errs, fmt.Sprintf("lend_reserve.%s: time left given twice", left))
+				}
+			}
+			cfg.LendReserve = append(cfg.LendReserve, ReservePoint{Left: d, Keep: keep})
+		}
+	}
+	sort.Slice(cfg.LendReserve, func(i, j int) bool { return cfg.LendReserve[i].Left < cfg.LendReserve[j].Left })
 	if rc.MinRemaining != nil {
 		if *rc.MinRemaining < 0 || *rc.MinRemaining >= 1 {
 			errs = append(errs, "min_remaining: must be in [0, 1)")

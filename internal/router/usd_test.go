@@ -411,3 +411,67 @@ func TestExpectedIsCappedAtRemaining(t *testing.T) {
 		t.Fatalf("expected %.2f remaining %.2f (%s)", d.Expected, d.remaining(), d.SpareWhy)
 	}
 }
+
+// lend_reserve keeps a share of the week that shrinks toward the reset: a
+// fresh week is mostly kept for home clients, one about to expire is lent.
+func TestLendReserveShrinksTowardReset(t *testing.T) {
+	pts := []ReservePoint{{Left: 8 * time.Hour, Keep: 0.01}, {Left: 7 * 24 * time.Hour, Keep: 0.7}}
+	for left, want := range map[time.Duration]float64{
+		time.Hour: 0.01, 8 * time.Hour: 0.01, 88 * time.Hour: 0.355, 7 * 24 * time.Hour: 0.7, 9 * 24 * time.Hour: 0.7,
+	} {
+		if got := reserveAt(pts, left); !closeTo(got, want, 1e-9) {
+			t.Fatalf("reserve at %s = %g, want %g", left, got, want)
+		}
+	}
+	if reserveAt(nil, time.Hour) != 0 {
+		t.Fatal("no points must keep nothing")
+	}
+
+	for _, tc := range []struct {
+		name   string
+		iReset time.Duration // from the start; history runs 7h
+		spare  float64
+		lends  bool
+	}{
+		// 4h left: keep 1%, $10 of $1000.
+		{"near reset", 11 * time.Hour, 690, true},
+		// 151h left: keep 1% + 143/160 × 69% = 62.67%.
+		{"fresh week", 158 * time.Hour, 700 - 626.6875, false},
+	} {
+		h := newHarness(t, "capacity_usd: {i@example.com: 1000}\nmin_spare: 0.1\nlend_reserve: {7d: 0.7, 8h: 0.01}")
+		start := h.now
+		h.buildHistory(7, 0.01, 0.01, start.Add(80*time.Hour), start.Add(tc.iReset), start.Add(60*time.Hour), 0.2, 0.3, 0.2)
+		i := h.account("i@example.com")
+		if i.SpareUSD == nil || !closeTo(*i.SpareUSD, tc.spare, 1e-6) || !strings.Contains(i.SpareWhy, "reserve") {
+			t.Fatalf("%s: i spare %v (%s), want %g", tc.name, i.SpareUSD, i.SpareWhy, tc.spare)
+		}
+		_, d := h.pick("connect", "s1")
+		if lent := d.Account == "i@example.com"; lent != tc.lends {
+			t.Fatalf("%s: connect picked %s (%s), want lending=%v", tc.name, d.Account, d.Reason, tc.lends)
+		}
+	}
+}
+
+func TestLendReserveConfig(t *testing.T) {
+	cfg, err := ParseConfig([]byte("lend_reserve: {7d: 0.7, 8h: 0.01, 1.5d: 0.2}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ReservePoint{{8 * time.Hour, 0.01}, {36 * time.Hour, 0.2}, {7 * 24 * time.Hour, 0.7}}
+	if fmt.Sprint(cfg.LendReserve) != fmt.Sprint(want) {
+		t.Fatalf("points %v, want %v", cfg.LendReserve, want)
+	}
+	raw, _ := json.Marshal(cfg.Doc())
+	if !strings.Contains(string(raw), `"lend_reserve":{"36h":0.2,"7d":0.7,"8h":0.01}`) {
+		t.Fatalf("doc %s", raw)
+	}
+	back, err := ParseConfig(raw)
+	if err != nil || fmt.Sprint(back.LendReserve) != fmt.Sprint(want) {
+		t.Fatalf("round trip: %v %v", err, back.LendReserve)
+	}
+	for _, bad := range []string{"lend_reserve: {7x: 0.5}", "lend_reserve: {7d: 1.5}", "lend_reserve: {7d: 0.5, 168h: 0.6}"} {
+		if _, err := ParseConfig([]byte(bad)); err == nil || !strings.Contains(err.Error(), "lend_reserve") {
+			t.Fatalf("%s: err %v", bad, err)
+		}
+	}
+}

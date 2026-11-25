@@ -44,6 +44,8 @@ spare(account)     = remaining(account) − spare_factor × expected(account)
 
 All of these are API-equivalent dollars (see [Dollars](#dollars-capacity-learning-and-fable-protection)). A client's demand is its consumption in dollars per hour — the **higher** of its 24-hour and 7-day averages — billed at what its requests cost on every account it used, including borrowed accounts, paid extra usage and API-key accounts that the weekly window does not show (hours recorded before requests were priced are left out, and the averages start after the last of them). Demand "reaches" an account after the client's earlier accounts are used up (an earlier account that resets before this one counts as refilled). Demand spent on borrowed accounts still counts: lending can stop at any time, so the client's own accounts are planned as if they had to carry all of it. Need beyond what an account has left is shown in its explanation, not in `expected`. An account lends while `spare > min_spare × capacity_usd` (and keeps sessions it already lent while `spare > 0`). With less than `min_history` of history nothing is lent.
 
+`lend_reserve` adds a floor that shrinks as the week runs out: a map from time left until the weekly reset to the share of the week the account keeps for its home clients, interpolated linearly between points (the nearest point's share outside them). With `{7d: 0.7, 8h: 0.01}` an account with a full week ahead lends only while more than 70 % of its week is left; with 8 h to go, down to 1 %. Spare is then `min(remaining − spare_factor × expected, remaining − keep × capacity_usd)`, so the reserve can only lend less, never more. Not set by default.
+
 `spare_factor` (default **1.5**: lend only what is more than 50 % above the expected need) can be changed at runtime from the UI or the API.
 
 ### Wait and pacing
@@ -162,6 +164,7 @@ See [`config.example.yaml`](config.example.yaml); every key is optional.
 | `state_file` | — | Persists quota snapshots, 8 days of hourly usage, overrides and runtime config. |
 | `spare_factor` | `1.5` | Lend while remaining > factor × expected home use. |
 | `min_spare` | `0.03` | Spare needed to start lending, as a share of the account's weekly capacity. |
+| `lend_reserve` | — | Share of the week kept from lending, by time left to the weekly reset (`{7d: 0.7, 8h: 0.01}`; linear between points). Times accept `d` for days. |
 | `min_history` | `6h` | History needed before demand is trusted (nothing is lent before). |
 | `min_remaining` | `0.01` | Window share below which an account is blocked. |
 | `session_ttl` | `1h` | Idle time after which a (key, session) pin is forgotten. |

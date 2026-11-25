@@ -390,6 +390,16 @@ func (pc *planContext) expected(e *eval) {
 	e.Expected = math.Min(total, math.Max(0, e.remaining()))
 	e.Spare = e.remaining() - pc.factor*e.Expected
 	e.SpareWhy = fmt.Sprintf("left $%.2f − %.1f×expected $%.2f", e.remaining(), pc.factor, e.Expected)
+	// The reserve shrinks toward the reset, so an account keeps more of a
+	// fresh week for its home clients than of one about to expire.
+	if keep := reserveAt(pc.cfg.LendReserve, time.Duration(hours*float64(time.Hour))); keep > 0 {
+		reserve := keep * e.Capacity.USD
+		if capped := e.remaining() - reserve; capped < e.Spare {
+			e.Spare = capped
+			e.SpareWhy = fmt.Sprintf("left $%.2f − reserve %.0f%% of week $%.2f (more than %.1f×expected $%.2f)",
+				e.remaining(), keep*100, reserve, pc.factor, e.Expected)
+		}
+	}
 	if total > e.Expected {
 		parts = append(parts, fmt.Sprintf("need $%.2f is more than is left", total))
 	}

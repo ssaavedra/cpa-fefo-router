@@ -412,6 +412,7 @@ $("ovApply").onclick = async () => {
 // --- config -------------------------------------------------------------
 const GLOBALS = [
   ["spare_factor", "number", "Lend while remaining > factor × expected"], ["min_spare", "number", "Spare needed to start lending, share of the account's week"],
+  ["lend_reserve", "map", "Share of the week kept, by time left to reset, e.g. 7d: 0.7, 8h: 0.01 (linear between)"],
   ["default_unit_usd", "number", "$ per unit of capacity before any account is learned"], ["learn_min_delta", "number", "Weekly share seen before a capacity estimate is used"],
   ["min_remaining", "number", "Block a window below this share"], ["min_history", "text", "History before lending"],
   ["session_ttl", "text", "Session pin lifetime"], ["usage_poll_interval", "text", "Claude usage report poll (0 = off)"], ["probe_interval", "text", "Probe accounts without data"],
@@ -439,9 +440,14 @@ function renderConfig(force) {
   const g = $("globals"); g.replaceChildren();
   for (const [p, type, help] of GLOBALS) {
     const v = getPath(draft, p);
-    const inp = el("input", { type, step: type === "number" ? "0.01" : null });
-    if (type === "checkbox") inp.checked = !!v; else inp.value = v ?? "";
-    inp.addEventListener("input", () => { setPath(draft, p, type === "checkbox" ? inp.checked : type === "number" ? parseFloat(inp.value) : inp.value); markDirty(); });
+    const inp = el("input", { type: type === "map" ? "text" : type, step: type === "number" ? "0.01" : null });
+    if (type === "checkbox") inp.checked = !!v;
+    else if (type === "map") inp.value = Object.entries(v || {}).map(([k, x]) => `${k}: ${x}`).join(", ");
+    else inp.value = v ?? "";
+    const parse = () => type === "checkbox" ? inp.checked : type === "number" ? parseFloat(inp.value)
+      : type === "map" ? Object.fromEntries(inp.value.split(",").map((x) => x.split(":").map((y) => y.trim())).filter(([k]) => k).map(([k, x]) => [k, parseFloat(x)]))
+      : inp.value;
+    inp.addEventListener("input", () => { setPath(draft, p, parse()); markDirty(); });
     g.append(el("div", {}, el("label", { title: help }, p), inp, el("div", { class: "meta" }, help)));
   }
   renderBuckets(); renderClientsCfg(); unknownSig = ""; renderUnknown();

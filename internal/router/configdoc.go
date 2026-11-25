@@ -14,6 +14,7 @@ import (
 type ConfigDoc struct {
 	SpareFactor       float64              `json:"spare_factor"`
 	MinSpare          float64              `json:"min_spare"`
+	LendReserve       map[string]float64   `json:"lend_reserve"`
 	MinRemaining      float64              `json:"min_remaining"`
 	MinHistory        string               `json:"min_history"`
 	StaleAfter        string               `json:"stale_after"`
@@ -69,6 +70,14 @@ func durStr(d time.Duration) string {
 	}
 }
 
+// leftStr writes a lend_reserve time left, in days when it is whole days.
+func leftStr(d time.Duration) string {
+	if d > 0 && d%(24*time.Hour) == 0 {
+		return fmt.Sprintf("%dd", d/(24*time.Hour))
+	}
+	return durStr(d)
+}
+
 func clientDoc(c ClientConfig) ClientDoc {
 	return ClientDoc{Keys: append([]string{}, c.Keys...), Buckets: append([]string{}, c.Buckets...), OnExhausted: string(c.OnExhausted), Borrow: c.BorrowEnabled()}
 }
@@ -99,6 +108,10 @@ func (c Config) Doc() ConfigDoc {
 	d.Pacing.Enabled, d.Pacing.Horizon, d.Pacing.MaxDelay = c.Pacing.Enabled, durStr(c.Pacing.Horizon), durStr(c.Pacing.MaxDelay)
 	d.Wait.Horizon, d.Wait.MaxWait = durStr(c.Wait.Horizon), durStr(c.Wait.MaxWait)
 	d.Pricing.Sync, d.Pricing.SyncInterval, d.Pricing.URL = c.Pricing.Sync, durStr(c.Pricing.SyncInterval), c.Pricing.URL
+	d.LendReserve = map[string]float64{}
+	for _, p := range c.LendReserve {
+		d.LendReserve[leftStr(p.Left)] = p.Keep
+	}
 	d.Prices = map[string]pricing.Rates{}
 	for k, v := range c.Prices {
 		d.Prices[k] = v

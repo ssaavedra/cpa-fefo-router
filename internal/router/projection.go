@@ -164,23 +164,33 @@ func dedupe(xs []string) []string {
 	return out
 }
 
-// text is the one-line human rendering of the projection: dollars, or
-// shares of the pool's weekly capacity when tokens is set.
-func (p ProjectionView) text(tokens bool) string {
+// text is the one-line human rendering of the projection in the display
+// units: dollars, or shares of a week (the pool's for tokens and
+// pct_relative, the largest account's, largest, for pct_absolute).
+func (p ProjectionView) text(units string, largest float64) string {
 	amt := func(usd float64) string { return fmt.Sprintf("$%.2f", usd) }
-	if tokens {
+	of, whose := p.CapacityUSD, "the pool's week"
+	if units == UnitsPctAbsolute {
+		of, whose = largest, "the largest account's week"
+	}
+	shares := units != UnitsUSD && units != ""
+	if shares {
 		amt = func(usd float64) string {
-			if p.CapacityUSD <= 0 {
+			if of <= 0 {
 				return "?"
 			}
-			return fmt.Sprintf("%.0f%%", usd/p.CapacityUSD*100)
+			return fmt.Sprintf("%.0f%%", usd/of*100)
 		}
 	}
 	s := fmt.Sprintf("%s: %d accounts", p.Provider, p.Accounts)
-	if tokens {
-		s += fmt.Sprintf(" (amounts as share of the pool's week), remaining %s, home expected %s, spare now %s",
-			amt(p.RemainingUSD), amt(p.ExpectedUSD), amt(p.SpareUSD))
-	} else {
+	switch {
+	case units == UnitsPctAbsolute:
+		s += fmt.Sprintf(" (amounts as share of %s), capacity %s/week, remaining %s, home expected %s, spare now %s",
+			whose, amt(p.CapacityUSD), amt(p.RemainingUSD), amt(p.ExpectedUSD), amt(p.SpareUSD))
+	case shares:
+		s += fmt.Sprintf(" (amounts as share of %s), remaining %s, home expected %s, spare now %s",
+			whose, amt(p.RemainingUSD), amt(p.ExpectedUSD), amt(p.SpareUSD))
+	default:
 		s += fmt.Sprintf(", capacity $%.2f/week, remaining %s, home expected %s, spare now %s",
 			p.CapacityUSD, amt(p.RemainingUSD), amt(p.ExpectedUSD), amt(p.SpareUSD))
 	}
@@ -190,7 +200,7 @@ func (p ProjectionView) text(tokens bool) string {
 	if !p.DemandKnown {
 		return s + "; " + p.Why
 	}
-	if tokens {
+	if shares {
 		s += fmt.Sprintf("; pool load %.0f%% of weekly capacity", p.Utilisation*100)
 	} else {
 		s += fmt.Sprintf("; pool load $%.2f/h = %.0f%% of weekly capacity", p.DemandUSDPerHour, p.Utilisation*100)

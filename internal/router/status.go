@@ -84,7 +84,10 @@ type Status struct {
 	Flows        []Flow              `json:"flows"`
 	// Projections project each provider's pool, spare lending included.
 	Projections []ProjectionView `json:"projections"`
-	// DisplayUnits is what Text shows: "usd" or "tokens". JSON carries both.
+	// LendLimits are the bucket lending limits, per provider.
+	LendLimits []LendLimitView `json:"lend_limits,omitempty"`
+	// DisplayUnits is what Text shows: usd, tokens, pct_relative or
+	// pct_absolute. JSON carries dollars and tokens.
 	DisplayUnits string `json:"display_units"`
 }
 
@@ -287,6 +290,7 @@ func (r *Router) Status(decisions int) Status {
 	}
 	for _, p := range sortedKeys(pcs) {
 		st.Projections = append(st.Projections, pcs[p].projection(senders))
+		st.LendLimits = append(st.LendLimits, pcs[p].lendLimitViews()...)
 	}
 	n := len(r.decisions)
 	if decisions > n {
@@ -308,6 +312,26 @@ func (r *Router) Status(decisions int) Status {
 // Text renders the status for humans, in s.DisplayUnits.
 func (s Status) Text() string {
 	tokens := s.DisplayUnits == UnitsTokens
+	pct := s.DisplayUnits == UnitsPctRelative || s.DisplayUnits == UnitsPctAbsolute
+	largest, pool := map[string]float64{}, map[string]float64{}
+	for _, a := range s.Accounts {
+		largest[a.Provider] = math.Max(largest[a.Provider], a.CapacityUSD)
+		pool[a.Provider] += a.CapacityUSD
+	}
+	// ref is the week a percent is of: the thing's own (own dollars) under
+	// pct_relative, the provider's largest account under pct_absolute.
+	ref := func(provider string, own float64) float64 {
+		if s.DisplayUnits == UnitsPctAbsolute {
+			return largest[provider]
+		}
+		return own
+	}
+	share := func(usd, of float64) string {
+		if of <= 0 {
+			return "?"
+		}
+		return fmt.Sprintf("%.0f%%", usd/of*100)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s  mode=%s  spare_factor=%.2f  history=%s  sessions=%d\n", s.Plugin, s.Version, s.Mode, s.SpareFactor, s.History, s.Bindings)
 	if s.HostError != "" {
@@ -336,10 +360,35 @@ func (s Status) Text() string {
 	if len(s.Projections) > 0 {
 		b.WriteString("\nPROJECTION (all accounts as one pool, spare lent, soonest reset first)\n")
 		for _, p := range s.Projections {
-			b.WriteString("  " + p.text(tokens) + "\n")
+			b.WriteString("  " + p.text(s.DisplayUnits, largest[p.Provider]) + "\n")
+		}
+	}
+	if len(s.LendLimits) > 0 {
+		b.WriteString("\nLEND LIMITS (what a bucket may lend this week)\n")
+		for _, l := range s.LendLimits {
+			amt := func(usd float64) string { return fmt.Sprintf("$%.2f", usd) }
+			if pct || tokens {
+				amt = func(usd float64) string { return share(usd, ref(l.Provider, l.CapacityUSD)) }
+			}
+			state := "open"
+			if !l.Open {
+				state = "REACHED"
+			}
+			to := "every other bucket"
+			if l.Target != LendAny {
+				to = "bucket " + l.Target
+			}
+			fmt.Fprintf(&b, "  %s → %s (%s): lent %s of %s allowed now (%.0f%% of the bucket's %s week), %s\n",
+				l.Bucket, to, l.Provider, amt(l.LentUSD), amt(l.AllowedUSD), l.ShareNow*100, amt(l.CapacityUSD), state)
 		}
 	}
 	b.WriteString("\nACCOUNTS\n")
+	switch s.DisplayUnits {
+	case UnitsPctRelative:
+		b.WriteString("  (amounts as % of each account's own week)\n")
+	case UnitsPctAbsolute:
+		b.WriteString("  (amounts as % of the provider's largest account's week)\n")
+	}
 	tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)
 	if tokens {
 		fmt.Fprintln(tw, "  account\tprovider\tbuckets\tweekly\tresets\t5h\tstate\ttokens 24h\ttokens 7d\tspare (of week)\tdata age")
@@ -353,12 +402,23 @@ func (s Status) Text() string {
 		} else if a.NoData {
 			state = "usable (no data)"
 		}
+		capa, rem := fmt.Sprintf("$%.2f", a.CapacityUSD), fmt.Sprintf("$%.2f", a.RemainingUSD)
+		of := ref(a.Provider, a.CapacityUSD)
+		if pct {
+			capa, rem = share(a.CapacityUSD, of), share(a.RemainingUSD, of)
+		}
 		exp, spare, spareShare := "?", "?", "?"
 		if a.ExpectedUSD != nil {
 			exp, spare = fmt.Sprintf("$%.2f", *a.ExpectedUSD), fmt.Sprintf("%+.2f", *a.SpareUSD)
 			spare = spare[:1] + "$" + spare[1:]
 			if a.CapacityUSD > 0 {
 				spareShare = fmt.Sprintf("%+.0f%%", *a.SpareUSD/a.CapacityUSD*100)
+			}
+			if pct {
+				exp, spare = share(*a.ExpectedUSD, of), "?"
+				if of > 0 {
+					spare = fmt.Sprintf("%+.0f%%", *a.SpareUSD/of*100)
+				}
 			}
 		}
 		resets := "?"
@@ -373,7 +433,7 @@ func (s Status) Text() string {
 		if tokens {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", fmtTokens(float64(a.Tokens24h)), fmtTokens(float64(a.Tokens7d)), spareShare, a.DataAge)
 		} else {
-			fmt.Fprintf(tw, "$%.2f\t$%.2f\t%s\t%s\t%s\n", a.CapacityUSD, a.RemainingUSD, exp, spare, a.DataAge)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", capa, rem, exp, spare, a.DataAge)
 		}
 	}
 	tw.Flush()
@@ -414,6 +474,23 @@ func (s Status) Text() string {
 			switch {
 			case d.Known && tokens:
 				dem = fmt.Sprintf("demand %s tok/h (24h %s, 7d %s)", fmtTokens(d.TokensPerHour), fmtTokens(d.TokensDay), fmtTokens(d.TokensWeek))
+			case d.Known && pct:
+				// A week of demand against the client's own accounts (the pool
+				// when it has none), or against the largest account.
+				own, whose := 0.0, "own accounts'"
+				for _, a := range s.Accounts {
+					if a.Provider == p && len(intersect(a.Buckets, c.Buckets)) > 0 {
+						own += a.CapacityUSD
+					}
+				}
+				if own <= 0 {
+					own, whose = pool[p], "pool's"
+				}
+				if s.DisplayUnits == UnitsPctAbsolute {
+					whose = "largest account's"
+				}
+				of, week := ref(p, own), 7*24.0
+				dem = fmt.Sprintf("demand %s of the %s week per week (24h %s, 7d %s)", share(d.PerHour*week, of), whose, share(d.Day*week, of), share(d.Week*week, of))
 			case d.Known:
 				dem = fmt.Sprintf("demand $%.2f/h (24h $%.2f, 7d $%.2f)", d.PerHour, d.Day, d.Week)
 			}

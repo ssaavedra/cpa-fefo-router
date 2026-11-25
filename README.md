@@ -44,7 +44,22 @@ spare(account)     = remaining(account) − spare_factor × expected(account)
 
 All of these are API-equivalent dollars (see [Dollars](#dollars-capacity-learning-and-fable-protection)). A client's demand is its consumption in dollars per hour — the **higher** of its 24-hour and 7-day averages — billed at what its requests cost on every account it used, including borrowed accounts, paid extra usage and API-key accounts that the weekly window does not show (hours recorded before requests were priced are left out, and the averages start after the last of them). Demand "reaches" an account after the client's earlier accounts are used up (an earlier account that resets before this one counts as refilled). Demand spent on borrowed accounts still counts: lending can stop at any time, so the client's own accounts are planned as if they had to carry all of it. Need beyond what an account has left is shown in its explanation, not in `expected`. An account lends while `spare > min_spare × capacity_usd` (and keeps sessions it already lent while `spare > 0`). With less than `min_history` of history nothing is lent.
 
-`lend_reserve` adds a floor that shrinks as the week runs out: a map from time left until the weekly reset to the share of the week the account keeps for its home clients, interpolated linearly between points (the nearest point's share outside them). With `{7d: 0.7, 8h: 0.01}` an account with a full week ahead lends only while more than 70 % of its week is left; with 8 h to go, down to 1 %. Spare is then `min(remaining − spare_factor × expected, remaining − keep × capacity_usd)`, so the reserve can only lend less, never more. Not set by default.
+`lend_reserve` adds a floor that shrinks as the week runs out: a map from time left until the weekly reset to the share of the week the account keeps for its home clients, interpolated linearly between points (the nearest point's share outside them), or a single number for the same share all week. With `{7d: 0.7, 8h: 0.01}` an account with a full week ahead lends only while more than 70 % of its week is left; with 8 h to go, down to 1 %. Spare is then `min(remaining − spare_factor × expected, remaining − keep × capacity_usd)`, so the reserve can only lend less, never more. Not set by default.
+
+### Bucket lending limits
+
+`lend_limits` caps how much of a bucket other buckets' clients may use, whatever its spare:
+
+```yaml
+lend_limits:
+  work:
+    any: 0.2                       # all borrowers together: at most 20 % of work's week
+    personal: {7d: 0.02, 8h: 0.4}  # clients of bucket personal: 2 % of a fresh week, up to 40 % near the reset
+```
+
+The share is of the bucket's week: the weekly capacity of its accounts added up, per provider (a bucket with Claude and Codex accounts has a separate limit for each). Like `lend_reserve` it is a number or a curve by time left until the reset; each account adds its capacity × the curve at its own time left, so the allowance grows as accounts approach their resets. What was lent is what the target's clients used on the bucket's accounts in each account's current weekly window (at the low end of the price range, as borrowers are billed), so it starts again at each reset. A target is a bucket name, meaning every client whose buckets include it, or `any`, meaning every borrower (also clients with no bucket). When several limits cover a borrower, all hold.
+
+A bucket at its limit lends nothing more to those clients: it is left out of their `spare-first`, `spare` and `last-resort` entries, pinned sessions move, and CPA's fill-first never gets it. Clients that own one of the bucket's accounts are never limited. An account of a limited bucket whose weekly window is not known yet does not lend to the covered clients. Status, the UI and metrics show each limit's allowance and what was lent.
 
 `spare_factor` (default **1.5**: lend only what is more than 50 % above the expected need) can be changed at runtime from the UI or the API.
 
@@ -95,14 +110,21 @@ Other models on the same account are not affected. Excluded accounts are dropped
 
 | Where | What |
 | --- | --- |
-| CPA management panel → plugin menu → **FEFO Router** (`/v0/resource/plugins/fefo-router/ui`) | Overview: a pool projection per provider, then accounts (windows, resets, expected use, spare, why), each client's live plan, traffic matrix (client → account → role), recent decisions with full ranking and exclusions, overrides, config editor, unknown keys. Uses the panel's stored management key, or asks for it. |
-| `GET /v0/management/fefo/status` (`?format=text`, `?units=usd\|tokens`, `?decisions=N`) | The same data as JSON (dollars and tokens) or a plain-text table in the chosen units. The UI has the same toggle. |
+| CPA management panel → plugin menu → **FEFO Router** (`/v0/resource/plugins/fefo-router/ui`) | Overview: a weekly outlook per provider, bucket lending limits, accounts (windows, resets, expected use, spare, why), each client's live plan, traffic matrix (client → account → role), recent decisions with full ranking and exclusions, overrides, and a settings editor with charts for `lend_reserve` and `lend_limits`. Uses the panel's stored management key, or asks for it. |
+| `GET /v0/management/fefo/status` (`?format=text`, `?units=usd\|tokens\|pct_relative\|pct_absolute`, `?decisions=N`) | The same data as JSON (dollars and tokens) or a plain-text table in the chosen units. The UI has the same choice. |
 | `GET /v0/management/fefo/metrics` | Prometheus, below. |
 | CPA log | One line per decision: `fefo selected client=laptop claude → me@work.example [own] bucket work, weekly 63% left, resets Thu 10:00Z`, plus pacing lines. |
 
 All management routes require CPA's management key.
 
-The pool projection treats all of a provider's accounts as one pool: total demand (every client's dollars per hour plus usage outside CPA) is served hour by hour for the next week from the account that resets soonest, so each account's spare is lent before it expires. It reports pool capacity, remaining, home clients' expected use and spare now, plus over the week the dollars used, the dollars that reset unused and any shortfall with the hour the pool runs dry. It is a best case: clients that never borrow, or policies that keep a client off an account, can leave quota unused that the projection spends. Accounts with no weekly window yet are left out. In token units the amounts are shown as shares of the pool's weekly capacity.
+The pool projection treats all of a provider's accounts as one pool: total demand (every client's dollars per hour plus usage outside CPA) is served hour by hour for the next week from the account that resets soonest, so each account's spare is lent before it expires. It reports pool capacity, remaining, home clients' expected use and spare now, plus over the week the dollars used, the dollars that reset unused and any shortfall with the hour the pool runs dry. It is a best case: clients that never borrow, or policies that keep a client off an account, can leave quota unused that the projection spends. Accounts with no weekly window yet are left out.
+
+Amounts can be shown four ways (the header of the UI, `?units=` or `display_units`):
+
+- `usd`: API-equivalent dollars.
+- `pct_relative`: a share of the week of the thing shown — an account's own capacity, a provider's pool, a bucket, or for a client's demand the capacity of its own accounts (the pool when it has none). 100 % = all of it.
+- `pct_absolute`: a share of the week of the provider's **largest** account, so accounts of different plan sizes compare directly: a Pro account next to a Max 5× one shows at most ~20 %. The UI draws account bars to the same scale.
+- `tokens`: token counts where they exist; other amounts as `pct_relative`.
 
 Metrics (dollars are API-equivalent USD):
 
@@ -111,6 +133,7 @@ Metrics (dollars are API-equivalent USD):
 | `fefo_account_weekly_remaining_ratio`, `fefo_account_short_remaining_ratio`, `fefo_account_weekly_reset_seconds`, `fefo_account_usable{reason}` | Window state per account. |
 | `fefo_account_capacity_usd{source}` | Weekly capacity and where it came from (`learned this cycle`, `learned last cycle`, `prior`, `pinned`). |
 | `fefo_account_remaining_usd`, `fefo_account_expected_usd`, `fefo_account_spare_usd` | Remaining, expected home use and spare. These replace `fefo_account_expected_home_usage` and `fefo_account_spare`, which were in plan-weeks. |
+| `fefo_bucket_lend_allowed_usd{bucket,target,provider}`, `fefo_bucket_lent_usd{…}` | What a bucket may lend to a target this week under `lend_limits`, and what it lent. |
 | `fefo_account_scoped_remaining{window}` | Estimated share left of a family's own allowance (`window="7d:fable"`). |
 | `fefo_client_demand_per_hour{window,unit}` | Client demand, `unit="usd"` or `unit="tokens"`, 24h and 7d averages. |
 | `fefo_cost_usd_total`, `fefo_tokens_total`, `fefo_requests_total` | Traffic per client and account. |
@@ -132,11 +155,11 @@ curl -X POST -H "Authorization: Bearer $MGMT" -d '{"spare_factor":2,"for":"1h"}'
 curl -X POST -H "Authorization: Bearer $MGMT" -d '{"client":"ci","clear":true}' http://127.0.0.1:8317/v0/management/fefo/override
 ```
 
-**Runtime config.** The Config tab (or `POST /v0/management/fefo/config`) edits buckets, clients, policies and knobs. The result is validated, applied at once and stored in the state file; it **replaces** the routing part of `config.yaml` until you revert it (`{"revert":true}` or the button). `mode` and `state_file` always come from `config.yaml`. Editing `config.yaml` itself also applies without a restart (CPA hot-reloads plugin config), but while a runtime config is active it wins.
+**Runtime config.** The Settings tab (or `POST /v0/management/fefo/config`) edits buckets, clients, policies and knobs. The result is validated, applied at once and stored in the state file; it **replaces** the routing part of `config.yaml` until you revert it (`{"revert":true}` or the button). `mode` and `state_file` always come from `config.yaml`. Editing `config.yaml` itself also applies without a restart (CPA hot-reloads plugin config), but while a runtime config is active it wins.
 
 **Making it permanent.** *Make permanent in config.yaml* writes the runtime config into the plugin's `config.yaml` section through CPA's `GET`/`PUT /v0/management/config.yaml` (which management proxies such as CPA Manager Plus pass through, unlike CPA's plugin config API): the plugin replaces only its own section, keeping the rest of the file and its comments, and CPA validates the result before saving it. `enabled`, `priority`, `mode`, `state_file` and `refresh_interval` stay as they were. The replaced section is kept as a backup in the state file (the last 20), and the runtime config ends. Backups are listed under *Advanced → config.yaml backups*; restoring one backs up the current section first. If `config.yaml` is generated from a template, update the template too, or the next render undoes the change.
 
-Unknown keys show up in the Config tab with an **Assign** button that adds their caller scope to a client.
+Unknown keys show up in the Settings tab with an **Assign** button that adds their caller scope to a client.
 
 ## Install
 
@@ -156,7 +179,7 @@ To try it without routing anything, start with `mode: observe`: it registers onl
 
 ## Configuration reference
 
-See [`config.example.yaml`](config.example.yaml); every key is optional.
+See [`config.example.yaml`](config.example.yaml); every key is optional. Durations are Go durations (`30s`, `5m`, `6h`) or days (`1d`).
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -164,7 +187,8 @@ See [`config.example.yaml`](config.example.yaml); every key is optional.
 | `state_file` | — | Persists quota snapshots, 8 days of hourly usage, overrides and runtime config. |
 | `spare_factor` | `1.5` | Lend while remaining > factor × expected home use. |
 | `min_spare` | `0.03` | Spare needed to start lending, as a share of the account's weekly capacity. |
-| `lend_reserve` | — | Share of the week kept from lending, by time left to the weekly reset (`{7d: 0.7, 8h: 0.01}`; linear between points). Times accept `d` for days. |
+| `lend_reserve` | — | Share of the week kept from lending, by time left to the weekly reset (`{7d: 0.7, 8h: 0.01}`; linear between points), or one share for the whole week (`0.3`). Times accept `d` for days. |
+| `lend_limits` | — | `bucket: {target: share}`: most of the bucket's week (its accounts' capacity summed) that the target's clients may use per week. Target is a bucket or `any`; share as in `lend_reserve`. See [Bucket lending limits](#bucket-lending-limits). |
 | `min_history` | `6h` | History needed before demand is trusted (nothing is lent before). |
 | `min_remaining` | `0.01` | Window share below which an account is blocked. |
 | `session_ttl` | `1h` | Idle time after which a (key, session) pin is forgotten. |
@@ -180,7 +204,7 @@ See [`config.example.yaml`](config.example.yaml); every key is optional.
 | `learn_min_delta` | `0.05` | Share of the week a cycle must have seen before its capacity estimate is used. |
 | `pricing` | sync on, `24h`, models.dev | `sync`, `sync_interval` (≥ 1h), `url` of the models.dev API. |
 | `prices` | — | `model: {input, output, cache_read, cache_write}` in dollars per 1M tokens; wins over every other source. |
-| `display_units` | `usd` | Units of the text status and the UI by default: `usd` or `tokens`. |
+| `display_units` | `usd` | Units of the text status and the UI by default: `usd`, `tokens`, `pct_relative` or `pct_absolute`. |
 | `clients.<name>` | — | `keys` (caller scopes or sha256), `buckets` (ordered), `on_exhausted` (`any`/`wait`/`fail`), `borrow` (default true). |
 | `default_client` | `any`, no buckets | Policy for keys not in `clients`. |
 | `pacing` | on, `2h`, `30s` | See *Wait and pacing*. |

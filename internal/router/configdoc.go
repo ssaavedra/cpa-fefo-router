@@ -12,26 +12,30 @@ import (
 // ConfigDoc is the editable routing configuration, as JSON (which is also
 // valid YAML, so ParseConfig reads it). Durations are strings like "6h".
 type ConfigDoc struct {
-	SpareFactor       float64              `json:"spare_factor"`
-	MinSpare          float64              `json:"min_spare"`
-	LendReserve       map[string]float64   `json:"lend_reserve"`
-	MinRemaining      float64              `json:"min_remaining"`
-	MinHistory        string               `json:"min_history"`
-	StaleAfter        string               `json:"stale_after"`
-	ProbeInterval     string               `json:"probe_interval"`
-	SessionTTL        string               `json:"session_ttl"`
-	UsagePollInterval string               `json:"usage_poll_interval"`
-	AllowExtraUsage   bool                 `json:"allow_extra_usage"`
-	ScopedFamilies    []string             `json:"scoped_families"`
-	LogDecisions      bool                 `json:"log_decisions"`
-	DisplayUnits      string               `json:"display_units"`
-	Buckets           map[string][]string  `json:"buckets"`
-	Capacity          map[string]float64   `json:"capacity"`
-	CapacityUSD       map[string]float64   `json:"capacity_usd"`
-	DefaultUnitUSD    float64              `json:"default_unit_usd"`
-	LearnMinDelta     float64              `json:"learn_min_delta"`
-	Clients           map[string]ClientDoc `json:"clients"`
-	DefaultClient     ClientDoc            `json:"default_client"`
+	SpareFactor float64 `json:"spare_factor"`
+	MinSpare    float64 `json:"min_spare"`
+	// LendReserve is a share of the week: a number, or time left → share.
+	LendReserve any `json:"lend_reserve"`
+	// LendLimits is lending bucket → target bucket (or "any") → share, each
+	// share as in LendReserve.
+	LendLimits        map[string]map[string]any `json:"lend_limits"`
+	MinRemaining      float64                   `json:"min_remaining"`
+	MinHistory        string                    `json:"min_history"`
+	StaleAfter        string                    `json:"stale_after"`
+	ProbeInterval     string                    `json:"probe_interval"`
+	SessionTTL        string                    `json:"session_ttl"`
+	UsagePollInterval string                    `json:"usage_poll_interval"`
+	AllowExtraUsage   bool                      `json:"allow_extra_usage"`
+	ScopedFamilies    []string                  `json:"scoped_families"`
+	LogDecisions      bool                      `json:"log_decisions"`
+	DisplayUnits      string                    `json:"display_units"`
+	Buckets           map[string][]string       `json:"buckets"`
+	Capacity          map[string]float64        `json:"capacity"`
+	CapacityUSD       map[string]float64        `json:"capacity_usd"`
+	DefaultUnitUSD    float64                   `json:"default_unit_usd"`
+	LearnMinDelta     float64                   `json:"learn_min_delta"`
+	Clients           map[string]ClientDoc      `json:"clients"`
+	DefaultClient     ClientDoc                 `json:"default_client"`
 	Pacing            struct {
 		Enabled  bool   `json:"enabled"`
 		Horizon  string `json:"horizon"`
@@ -78,6 +82,19 @@ func leftStr(d time.Duration) string {
 	return durStr(d)
 }
 
+// curveDoc writes a share-of-the-week curve as a number when it is the same
+// all week, else as a map from time left to share.
+func curveDoc(pts []ReservePoint) any {
+	if len(pts) == 1 && pts[0].Left == 0 {
+		return pts[0].Keep
+	}
+	m := map[string]float64{}
+	for _, p := range pts {
+		m[leftStr(p.Left)] = p.Keep
+	}
+	return m
+}
+
 func clientDoc(c ClientConfig) ClientDoc {
 	return ClientDoc{Keys: append([]string{}, c.Keys...), Buckets: append([]string{}, c.Buckets...), OnExhausted: string(c.OnExhausted), Borrow: c.BorrowEnabled()}
 }
@@ -108,9 +125,13 @@ func (c Config) Doc() ConfigDoc {
 	d.Pacing.Enabled, d.Pacing.Horizon, d.Pacing.MaxDelay = c.Pacing.Enabled, durStr(c.Pacing.Horizon), durStr(c.Pacing.MaxDelay)
 	d.Wait.Horizon, d.Wait.MaxWait = durStr(c.Wait.Horizon), durStr(c.Wait.MaxWait)
 	d.Pricing.Sync, d.Pricing.SyncInterval, d.Pricing.URL = c.Pricing.Sync, durStr(c.Pricing.SyncInterval), c.Pricing.URL
-	d.LendReserve = map[string]float64{}
-	for _, p := range c.LendReserve {
-		d.LendReserve[leftStr(p.Left)] = p.Keep
+	d.LendReserve = curveDoc(c.LendReserve)
+	d.LendLimits = map[string]map[string]any{}
+	for b, targets := range c.LendLimits {
+		d.LendLimits[b] = map[string]any{}
+		for t, pts := range targets {
+			d.LendLimits[b][t] = curveDoc(pts)
+		}
 	}
 	d.Prices = map[string]pricing.Rates{}
 	for k, v := range c.Prices {

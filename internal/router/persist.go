@@ -26,6 +26,8 @@ type persisted struct {
 	Overlay      string                           `json:"runtime_config,omitempty"`
 	OverlayAt    time.Time                        `json:"runtime_config_at,omitzero"`
 	OverlayNote  string                           `json:"runtime_config_note,omitempty"`
+	// ConfigBackups are config.yaml sections replaced from the browser.
+	ConfigBackups []configBackup `json:"config_backups,omitempty"`
 	// Prices is the last models.dev sync.
 	Prices *pricing.Table `json:"prices,omitempty"`
 	// MonotonicDelta marks state recorded after weekly readings stopped
@@ -106,6 +108,9 @@ func (r *Router) loadState(path string) {
 			r.overrides[k] = v
 		}
 	}
+	if len(r.configBackups) == 0 {
+		r.configBackups = p.ConfigBackups
+	}
 	if r.overlay == "" && p.Overlay != "" {
 		r.overlay, r.overlayAt, r.overlayNote = p.Overlay, p.OverlayAt, p.OverlayNote
 	}
@@ -127,6 +132,7 @@ func (r *Router) saveState() {
 		Version: stateVersion, SavedAt: r.now(), ObserveStart: r.observeStart, MonotonicDelta: true,
 		Accounts: r.accounts, Hours: r.hours, Scopes: r.scopes, Overrides: r.overrides,
 		Overlay: r.overlay, OverlayAt: r.overlayAt, OverlayNote: r.overlayNote,
+		ConfigBackups: r.configBackups,
 	}
 	if len(r.synced.Models) > 0 {
 		synced := r.synced

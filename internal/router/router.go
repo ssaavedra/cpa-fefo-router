@@ -54,6 +54,8 @@ type Router struct {
 	overlayAt   time.Time
 	overlayNote string
 	overlayErr  string
+	// config.yaml sections replaced from the browser, oldest first.
+	configBackups []configBackup
 	// Caller scopes seen that map to no configured client.
 	unknownScopes map[string]time.Time
 

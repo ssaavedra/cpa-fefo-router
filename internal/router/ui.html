@@ -52,6 +52,7 @@ textarea { width: 100%; font-family: var(--mono); font-size: 12px; min-height: 8
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 10px; }
 .row > div { min-width: 120px; }
 button.act { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
+button:disabled { opacity: .5; cursor: default; }
 button.sec { background: var(--chip); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
 button.danger { color: var(--bad); }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -133,9 +134,10 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
         <span class="spacer"></span>
         <input id="cfgNote" placeholder="change note" style="min-width:220px">
         <button class="act" id="cfgSave">Save runtime config</button>
+        <button class="sec" id="cfgPromote">Make permanent in config.yaml</button>
         <button class="sec danger" id="cfgRevert">Revert to config.yaml</button>
       </div>
-      <div class="meta">Saving stores the routing config in the plugin state file; it applies immediately and wins over config.yaml until reverted. <code>mode</code> and <code>state_file</code> always come from config.yaml.</div>
+      <div class="meta">Saving stores the routing config in the plugin state file; it applies immediately and wins over config.yaml until reverted. <code>mode</code> and <code>state_file</code> always come from config.yaml. <em>Make permanent</em> writes the runtime config into config.yaml through CPA (the old section is kept as a backup, below) and stops using the runtime config.</div>
       <div class="err" id="cfgErr"></div>
     </div>
 
@@ -159,6 +161,10 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
       <div class="row" style="margin-top:6px"><button class="sec" id="rawApply">Save JSON as runtime config</button></div>
     </details>
     <details><summary>config.yaml section (read-only)</summary><pre class="mono" id="baseYaml"></pre></details>
+    <details><summary>config.yaml backups</summary>
+      <div class="meta" style="margin:6px 0">Sections of config.yaml replaced from this page, newest first (the last 20 are kept in the state file). Restoring backs up the current section first.</div>
+      <div id="cfgBackups"></div>
+    </details>
   </section>
 </main>
 <div class="toast" id="toast"></div>
@@ -399,6 +405,8 @@ function renderConfig(force) {
   $("cfgErr").textContent = cfgView.overlay_error || "";
   $("knownAccounts").textContent = (cfgView.known_accounts || []).join(" · ") || "none yet";
   $("baseYaml").textContent = cfgView.base_yaml || "";
+  $("cfgPromote").disabled = cfgView.source !== "runtime";
+  renderBackups();
   const g = $("globals"); g.replaceChildren();
   for (const [p, type, help] of GLOBALS) {
     const v = getPath(draft, p);
@@ -492,6 +500,53 @@ $("cfgRevert").onclick = async () => {
   if (!confirm("Drop the runtime config and use config.yaml again?")) return;
   try { cfgView = await api("/config", { revert: true }); dirty = false; renderConfig(true); toast("Reverted to config.yaml"); refresh(); } catch (e) { toast(e.message, true); }
 };
+
+// config.yaml is written through CPA's own plugin config API, so CPA keeps
+// the rest of the file (and its comments) and validates the result.
+const CPA_PLUGIN_CONFIG = "/v0/management/plugins/fefo-router/config";
+async function cpaPluginConfig(section) {
+  const opts = { headers: { Authorization: "Bearer " + key } };
+  if (section !== undefined) { opts.method = "PUT"; opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(section); }
+  const res = await fetch(CPA_PLUGIN_CONFIG, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error("CPA: " + (data.message || data.error || res.statusText));
+  return data;
+}
+$("cfgPromote").onclick = async () => {
+  if (dirty && !confirm("You have unsaved edits; they will not be included. Continue?")) return;
+  if (!confirm("Write the runtime config into config.yaml and stop using the runtime config? The current config.yaml section is kept as a backup.")) return;
+  try {
+    const current = await cpaPluginConfig();
+    const v = await api("/config", { promote: { current } });
+    await cpaPluginConfig(v.section);
+    cfgView = await api("/config", { adopt: { section: v.section, drop_overlay: true } });
+    dirty = false; renderConfig(true); toast("config.yaml updated; runtime config ended"); refresh();
+  } catch (e) { $("cfgErr").textContent = e.message; toast("Not made permanent", true); }
+};
+async function restoreBackup(b) {
+  const still = cfgView.source === "runtime" ? "\n\nThe runtime config keeps winning until you revert it." : "";
+  if (!confirm(`Replace the config.yaml section with the backup from ${new Date(b.at).toLocaleString()}? The current section is backed up first.` + still)) return;
+  try {
+    const current = await cpaPluginConfig();
+    await api("/config", { backup: current, note: "before restoring the backup from " + b.at });
+    await cpaPluginConfig(b.section);
+    cfgView = await api("/config", { adopt: { section: b.section } });
+    dirty = false; renderConfig(true); toast("Backup restored to config.yaml"); refresh();
+  } catch (e) { $("cfgErr").textContent = e.message; toast("Not restored", true); }
+}
+function renderBackups() {
+  const box = $("cfgBackups"); box.replaceChildren();
+  const bs = cfgView.backups || [];
+  if (!bs.length) box.append(el("div", { class: "meta" }, "No backups yet."));
+  for (const b of bs) {
+    box.append(el("div", { class: "card", style: "margin-bottom:8px" },
+      el("div", { class: "row", style: "margin:0" },
+        el("div", {}, el("strong", {}, new Date(b.at).toLocaleString()), b.note ? el("div", { class: "meta" }, b.note) : null),
+        el("span", { class: "spacer" }),
+        el("button", { class: "sec", onclick: () => restoreBackup(b) }, "Restore")),
+      el("details", {}, el("summary", {}, "section"), el("pre", { class: "mono" }, JSON.stringify(b.section, null, 2)))));
+  }
+}
 
 // --- loop ---------------------------------------------------------------
 async function refresh(withConfig) {

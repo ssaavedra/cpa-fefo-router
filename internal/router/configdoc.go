@@ -152,7 +152,23 @@ type ConfigView struct {
 	Mode         Mode      `json:"mode"`
 	StateFile    string    `json:"state_file"`
 	Accounts     []string  `json:"known_accounts"`
+	// Backups are config.yaml sections replaced from the browser, newest
+	// first, for restoring.
+	Backups []configBackup `json:"backups"`
+	// Section is the config.yaml section a promote request asked for.
+	Section json.RawMessage `json:"section,omitempty"`
 }
+
+// configBackup is a config.yaml section as it was before the browser
+// replaced it.
+type configBackup struct {
+	At      time.Time       `json:"at"`
+	Note    string          `json:"note,omitempty"`
+	Section json.RawMessage `json:"section"`
+}
+
+// maxConfigBackups bounds the backups kept in the state file.
+const maxConfigBackups = 20
 
 // ConfigView returns the current config for the editor.
 func (r *Router) ConfigView() ConfigView {
@@ -169,6 +185,10 @@ func (r *Router) ConfigView() ConfigView {
 	for _, id := range sortedKeys(r.accounts) {
 		a := r.accounts[id].Info
 		v.Accounts = append(v.Accounts, a.display()+" ("+a.Provider+")")
+	}
+	v.Backups = make([]configBackup, 0, len(r.configBackups))
+	for i := len(r.configBackups) - 1; i >= 0; i-- {
+		v.Backups = append(v.Backups, r.configBackups[i])
 	}
 	return v
 }
@@ -189,6 +209,25 @@ type configRequest struct {
 	Note string `json:"note"`
 	// Force saves even if a wait/fail client would have no account.
 	Force bool `json:"force"`
+
+	// The browser writes config.yaml itself, through CPA's plugin config
+	// API, in three steps: promote (or backup), then CPA's PUT, then adopt.
+
+	// Promote answers with the config.yaml section that makes the runtime
+	// config permanent: Current (the section config.yaml has now) with its
+	// routing keys replaced by the runtime config. Current is kept as a backup.
+	Promote *struct {
+		Current json.RawMessage `json:"current"`
+	} `json:"promote"`
+	// Backup keeps a config.yaml section that is about to be replaced.
+	Backup json.RawMessage `json:"backup"`
+	// Adopt installs a section just written to config.yaml without waiting
+	// for CPA to pass it on. DropOverlay also ends the runtime config, which
+	// the new section now holds.
+	Adopt *struct {
+		Section     json.RawMessage `json:"section"`
+		DropOverlay bool            `json:"drop_overlay"`
+	} `json:"adopt"`
 }
 
 // UpdateConfig applies a browser edit. The runtime config persists in the
@@ -197,6 +236,21 @@ func (r *Router) UpdateConfig(body []byte) (ConfigView, error) {
 	var req configRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return ConfigView{}, fmt.Errorf("decode body: %w", err)
+	}
+	switch {
+	case req.Promote != nil:
+		return r.promoteConfig(req.Promote.Current, req.Note)
+	case len(req.Backup) > 0:
+		if _, err := sectionObject(req.Backup); err != nil {
+			return ConfigView{}, err
+		}
+		r.mu.Lock()
+		r.backupSectionLocked(req.Backup, req.Note)
+		r.mu.Unlock()
+		r.saveState()
+		return r.ConfigView(), nil
+	case req.Adopt != nil:
+		return r.adoptSection(req.Adopt.Section, req.Adopt.DropOverlay)
 	}
 	r.mu.Lock()
 	now := r.now()
@@ -254,6 +308,91 @@ func (r *Router) UpdateConfig(body []byte) (ConfigView, error) {
 	r.saveState()
 	if r.log != nil {
 		r.log("info", "fefo runtime config updated", map[string]any{"note": req.Note})
+	}
+	return r.ConfigView(), nil
+}
+
+// sectionObject decodes a config.yaml section sent as a JSON object.
+func sectionObject(raw json.RawMessage) (map[string]any, error) {
+	obj := map[string]any{}
+	if len(raw) == 0 || string(raw) == "null" {
+		return obj, nil
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("config.yaml section must be a JSON object: %w", err)
+	}
+	return obj, nil
+}
+
+func (r *Router) backupSectionLocked(section json.RawMessage, note string) {
+	r.configBackups = append(r.configBackups, configBackup{At: r.now(), Note: note, Section: append(json.RawMessage{}, section...)})
+	if n := len(r.configBackups) - maxConfigBackups; n > 0 {
+		r.configBackups = append([]configBackup{}, r.configBackups[n:]...)
+	}
+	r.dirty = true
+}
+
+// promoteConfig builds the section that makes the runtime config permanent
+// and backs up the current one. Keys the runtime config does not own
+// (enabled, priority, mode, state_file, refresh_interval) are kept.
+func (r *Router) promoteConfig(current json.RawMessage, note string) (ConfigView, error) {
+	obj, err := sectionObject(current)
+	if err != nil {
+		return ConfigView{}, err
+	}
+	r.mu.Lock()
+	if strings.TrimSpace(r.overlay) == "" || r.overlayErr != "" {
+		r.mu.Unlock()
+		return ConfigView{}, fmt.Errorf("no runtime config in effect to make permanent")
+	}
+	doc, _ := json.Marshal(r.cfg.Doc())
+	r.mu.Unlock()
+	var routing map[string]any
+	if err := json.Unmarshal(doc, &routing); err != nil {
+		return ConfigView{}, err
+	}
+	for k, v := range routing {
+		obj[k] = v
+	}
+	section, err := json.Marshal(obj)
+	if err != nil {
+		return ConfigView{}, err
+	}
+	if _, err := ParseConfig(section); err != nil {
+		return ConfigView{}, fmt.Errorf("permanent config would be invalid: %w", err)
+	}
+	if note == "" {
+		note = "before making the runtime config permanent"
+	}
+	r.mu.Lock()
+	r.backupSectionLocked(current, note)
+	r.mu.Unlock()
+	r.saveState()
+	v := r.ConfigView()
+	v.Section = section
+	return v, nil
+}
+
+// adoptSection installs a section the browser has written to config.yaml.
+func (r *Router) adoptSection(section json.RawMessage, dropOverlay bool) (ConfigView, error) {
+	if _, err := sectionObject(section); err != nil {
+		return ConfigView{}, err
+	}
+	cfg, err := ParseConfig(section)
+	if err != nil {
+		return ConfigView{}, err
+	}
+	r.SetBaseConfig(section, cfg)
+	if dropOverlay {
+		r.mu.Lock()
+		r.overlay, r.overlayAt, r.overlayNote = "", time.Time{}, ""
+		r.applyOverlayLocked()
+		r.dirty = true
+		r.mu.Unlock()
+	}
+	r.saveState()
+	if r.log != nil {
+		r.log("info", "fefo config.yaml section adopted", map[string]any{"runtime_config_dropped": dropOverlay})
 	}
 	return r.ConfigView(), nil
 }

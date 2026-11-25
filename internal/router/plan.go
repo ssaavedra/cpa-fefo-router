@@ -233,9 +233,14 @@ func (r *Router) evaluateLocked(st *accountState, now time.Time, capa capacityIn
 }
 
 // rate computes a client's (or the external pseudo-client's) consumption on
-// this provider's accounts in dollars per hour: its share of each hour's
-// weekly delta times the account's capacity. onlyAccount restricts it to
+// this provider's accounts in dollars per hour. onlyAccount restricts it to
 // one account.
+//
+// A client is billed what its requests cost wherever they ran, so usage the
+// weekly window cannot see still counts: a borrowed account's first reading
+// after an idle gap (booked as outside CPA), paid extra usage (the window
+// stays full) and API-key accounts (no window). Hours without prices fall
+// back to the client's share of the weekly delta times capacity.
 func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 	key := client + "|" + onlyAccount
 	if ri, ok := pc.demand[key]; ok {
@@ -264,7 +269,7 @@ func (pc *planContext) rate(client, onlyAccount string) rateInfo {
 			}
 			for h, b := range r.hours[id] {
 				if h >= from && h <= nowH {
-					usd += b.split(home)[client] * e.Capacity.USD
+					usd += b.billed(client, home, e.Capacity.USD)
 					tokens += float64(b.Tokens[client])
 				}
 			}

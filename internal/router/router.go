@@ -261,6 +261,9 @@ func (r *Router) ObserveUsage(rec pluginapi.UsageRecord) {
 			}
 			if at.Sub(prev.At) > attributionGap {
 				b.External += delta
+				if delta > 0 && !rec.Failed {
+					b.GapUSD += cost.Low
+				}
 			} else {
 				b.Delta += delta
 			}

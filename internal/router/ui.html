@@ -751,6 +751,7 @@ const GROUPS = [
   { title: "Lending spare quota", intro: "An account lends to other buckets' clients only quota its own clients are not expected to need before its weekly reset. These settings decide how careful that is.", fields: [
     { key: "spare_factor", label: "Safety margin", kind: "number", unit: "× expected use", step: 0.1, min: 1, def: 1.5, defText: "1.5×", help: "Lend only what is left beyond this many times the owners' expected use. 1.5 keeps 50% extra for them; 1 lends everything they are not expected to use." },
     { key: "min_spare", label: "Smallest spare worth lending", kind: "pct", def: 0.03, help: "Start lending only once the spare is at least this share of the account's week, so accounts do not flip in and out on rounding. A session already borrowing stays until the spare reaches 0." },
+    { key: "lend_min_short", label: "Stop lending below, 5-hour window", kind: "pct", def: 0.3, help: "An account whose 5-hour window has less than this left lends nothing, sessions already borrowing included, until the window refills, so borrowers cannot empty it under its owners. 0 turns it off." },
     { key: "min_history", label: "Measure demand for", kind: "dur", def: "6h", help: "Nothing is lent until clients' demand has been measured this long." },
     { block: reserveBlock },
   ] },

@@ -204,6 +204,9 @@ type Config struct {
 	// capacity summed) that the target's clients may use this weekly window,
 	// by time left until each account's reset.
 	LendLimits map[string]map[string][]ReservePoint `yaml:"-" json:"-"`
+	// LendMinShort stops an account lending while its 5h window has less than
+	// this share left, so borrowers cannot empty it under its home clients.
+	LendMinShort float64 `yaml:"lend_min_short" json:"lend_min_short"`
 	// MinRemaining blocks an account whose 5h or weekly window has less left.
 	MinRemaining float64 `yaml:"min_remaining" json:"min_remaining"`
 	// MinHistory is how much usage history a client needs before its demand
@@ -271,6 +274,7 @@ func DefaultConfig() Config {
 		Mode:              ModeActive,
 		SpareFactor:       1.5,
 		MinSpare:          0.03,
+		LendMinShort:      0.3,
 		MinRemaining:      0.01,
 		MinHistory:        6 * time.Hour,
 		StaleAfter:        30 * time.Minute,
@@ -297,6 +301,7 @@ type rawConfig struct {
 	MinSpare          *float64                  `yaml:"min_spare"`
 	LendReserve       any                       `yaml:"lend_reserve"`
 	LendLimits        map[string]map[string]any `yaml:"lend_limits"`
+	LendMinShort      *float64                  `yaml:"lend_min_short"`
 	MinRemaining      *float64                  `yaml:"min_remaining"`
 	MinHistory        *string                   `yaml:"min_history"`
 	StaleAfter        *string                   `yaml:"stale_after"`
@@ -382,6 +387,13 @@ func ParseConfig(raw []byte) (Config, error) {
 	}
 	pts, perrs := parseCurve("lend_reserve", rc.LendReserve)
 	cfg.LendReserve, errs = pts, append(errs, perrs...)
+	if rc.LendMinShort != nil {
+		if *rc.LendMinShort < 0 || *rc.LendMinShort > 1 {
+			errs = append(errs, "lend_min_short: must be in [0, 1]")
+		} else {
+			cfg.LendMinShort = *rc.LendMinShort
+		}
+	}
 	if rc.MinRemaining != nil {
 		if *rc.MinRemaining < 0 || *rc.MinRemaining >= 1 {
 			errs = append(errs, "min_remaining: must be in [0, 1)")

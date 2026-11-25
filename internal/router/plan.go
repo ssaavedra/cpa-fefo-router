@@ -151,9 +151,7 @@ func (r *Router) newPlanContextLocked(provider string, now time.Time) *planConte
 		}
 		pc.evals[id] = r.evaluateLocked(st, now, r.capacityLocked(st, u.usd, u.why))
 	}
-	for _, id := range ids {
-		pc.expected(pc.evals[id])
-	}
+	pc.expectAll()
 	return pc
 }
 
@@ -337,78 +335,6 @@ func sortByReset(es []*eval) {
 		}
 		return a.ID < b.ID
 	})
-}
-
-// expected fills Expected and Spare: how much of the account its home clients
-// (and usage outside CPA) will need before its weekly reset, walking each
-// home client's preference list so earlier accounts absorb demand first.
-func (pc *planContext) expected(e *eval) {
-	if e.NoData || e.WeeklyReset.IsZero() {
-		e.Expected, e.Spare = math.Inf(1), math.Inf(-1)
-		e.SpareWhy = "weekly window not known yet"
-		return
-	}
-	hours := e.hoursToReset(pc.now)
-	ext := pc.rate(externalClient, e.ID)
-	if !ext.Known {
-		e.Expected, e.Spare = math.Inf(1), math.Inf(-1)
-		e.SpareWhy = ext.Why
-		return
-	}
-	total := ext.PerHour * hours
-	parts := []string{}
-	if total > 0 {
-		parts = append(parts, fmt.Sprintf("outside CPA $%.2f", total))
-	}
-	for _, client := range e.Home {
-		cc := pc.r.clientConfigLocked(client)
-		d := pc.rate(client, "")
-		if !d.Known {
-			e.Expected, e.Spare = math.Inf(1), math.Inf(-1)
-			e.SpareWhy = client + ": " + d.Why
-			return
-		}
-		need := d.PerHour * hours
-		supply := 0.0
-		for _, b := range pc.ownList(cc) {
-			if b.ID == e.ID {
-				break
-			}
-			if !b.Usable || b.NoData {
-				continue
-			}
-			s := b.remaining()
-			if !b.WeeklyReset.IsZero() && b.WeeklyReset.Before(e.WeeklyReset) {
-				s += b.Capacity.USD // refills within this account's window
-			}
-			supply += s
-		}
-		reaching := math.Max(0, need-supply)
-		total += reaching
-		parts = append(parts, fmt.Sprintf("%s $%.2f/h×%s→$%.2f", client, d.PerHour, fmtDur(time.Duration(hours*float64(time.Hour))), reaching))
-	}
-	// The account cannot serve more than it has left before it resets; the
-	// rest of the need falls on other accounts. Capping changes no lending
-	// decision (lending needs Expected < remaining / factor).
-	e.Expected = math.Min(total, math.Max(0, e.remaining()))
-	e.Spare = e.remaining() - pc.factor*e.Expected
-	e.SpareWhy = fmt.Sprintf("left $%.2f − %.1f×expected $%.2f", e.remaining(), pc.factor, e.Expected)
-	// The reserve shrinks toward the reset, so an account keeps more of a
-	// fresh week for its home clients than of one about to expire.
-	if keep := reserveAt(pc.cfg.LendReserve, time.Duration(hours*float64(time.Hour))); keep > 0 {
-		reserve := keep * e.Capacity.USD
-		if capped := e.remaining() - reserve; capped < e.Spare {
-			e.Spare = capped
-			e.SpareWhy = fmt.Sprintf("left $%.2f − reserve %.0f%% of week $%.2f (more than %.1f×expected $%.2f)",
-				e.remaining(), keep*100, reserve, pc.factor, e.Expected)
-		}
-	}
-	if total > e.Expected {
-		parts = append(parts, fmt.Sprintf("need $%.2f is more than is left", total))
-	}
-	if len(parts) > 0 {
-		e.SpareWhy += " (" + strings.Join(parts, ", ") + ")"
-	}
 }
 
 // plan orders the accounts a client may use right now. minSpare is a share

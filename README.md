@@ -41,7 +41,7 @@ expected(account)  = Σ over home clients of the demand that reaches this accoun
 spare(account)     = remaining(account) − spare_factor × expected(account)
 ```
 
-All of these are API-equivalent dollars (see [Dollars](#dollars-capacity-learning-and-fable-protection)). A client's demand is its consumption in dollars per hour — the **higher** of its 24-hour and 7-day averages — measured from the weekly utilization headers and split between clients by what their requests cost. Demand "reaches" an account after the client's earlier accounts are used up (an earlier account that resets before this one counts as refilled). An account lends while `spare > min_spare × capacity_usd` (and keeps sessions it already lent while `spare > 0`). With less than `min_history` of history nothing is lent.
+All of these are API-equivalent dollars (see [Dollars](#dollars-capacity-learning-and-fable-protection)). A client's demand is its consumption in dollars per hour — the **higher** of its 24-hour and 7-day averages — billed at what its requests cost on every account it used, including borrowed accounts, paid extra usage and API-key accounts that the weekly window does not show (hours recorded before requests were priced fall back to the client's cost share of the weekly utilization delta). Demand "reaches" an account after the client's earlier accounts are used up (an earlier account that resets before this one counts as refilled). An account lends while `spare > min_spare × capacity_usd` (and keeps sessions it already lent while `spare > 0`). With less than `min_history` of history nothing is lent.
 
 `spare_factor` (default **1.5**: lend only what is more than 50 % above the expected need) can be changed at runtime from the UI or the API.
 

@@ -3,6 +3,7 @@ package router
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"strings"
 	"time"
 
@@ -128,6 +129,28 @@ type hourBucket struct {
 	// request. An hour carried over from before pricing has dollars for only
 	// part of its traffic, so its split and capacity use fall back to tokens.
 	Priced bool `json:"priced,omitempty"`
+	// GapUSD is the low-end cost of requests whose reading closed an idle gap.
+	// Their share of the step is in External but is billed to the client, so
+	// it is taken back out of External's dollars.
+	GapUSD float64 `json:"gap_usd,omitempty"`
+}
+
+// billed is the dollars a client used in this hour. In a priced hour that is
+// what its requests cost, at the high end for a home client of the account
+// and the low end for a borrower (as in split). Otherwise it is the client's
+// share of the weekly delta times capacityUSD. The external pseudo-client
+// gets its share minus GapUSD.
+func (b *hourBucket) billed(client string, home map[string]bool, capacityUSD float64) float64 {
+	if client == externalClient {
+		return math.Max(0, b.split(home)[client]*capacityUSD-b.GapUSD)
+	}
+	if b.Priced && b.USDHigh[client] > 0 {
+		if home[client] {
+			return b.USDHigh[client]
+		}
+		return b.USDLow[client]
+	}
+	return b.split(home)[client] * capacityUSD
 }
 
 // split returns each client's share of Delta, weighted by cost. A home client

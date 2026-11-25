@@ -280,3 +280,55 @@ func TestHourCarriedOverFromBeforePricingSplitsByTokens(t *testing.T) {
 		t.Fatalf("an hour recorded before pricing must split by tokens, not hand it all to the priced client: pni %+v connect %+v", pni, conn)
 	}
 }
+
+// Demand is what a client's requests cost, so usage the weekly window does
+// not show still counts against its own accounts.
+func TestDemandBillsUsageTheWeeklyWindowMisses(t *testing.T) {
+	const model = "claude-opus-5-5"
+	detail := pluginapi.UsageDetail{OutputTokens: 20_000} // $0.40 of Opus 5.5
+	usd := embeddedPrices.Cost(model, pricing.NormalizeUsage("claude", detail)).High
+	reset := func(h *harness) time.Time { return h.now.Add(100 * time.Hour) }
+
+	t.Run("first reading after an idle gap on a borrowed account", func(t *testing.T) {
+		h := newHarness(t, "")
+		h.r.observeStart = h.now.Add(-24 * time.Hour)
+		r := reset(h)
+		h.use("pni", acctI, model, pluginapi.UsageDetail{}, 0.10, r)
+		h.advance(time.Hour) // i idle, then connect borrows it
+		h.use("connect", acctI, model, detail, 0.12, r)
+		if got := h.demand("connect"); !closeTo(got.Day, usd/24, 1e-9) {
+			t.Fatalf("connect demand %+v, want $%.2f/24h", got, usd)
+		}
+		h.r.mu.Lock()
+		pc := h.r.newPlanContextLocked("claude", h.now)
+		ext := pc.rate(externalClient, acctI)
+		capUSD := pc.evals[acctI].Capacity.USD
+		h.r.mu.Unlock()
+		if want := (0.02*capUSD - usd) / 24; !closeTo(ext.Day, want, 1e-9) {
+			t.Fatalf("outside CPA %.4f/h, want %.4f/h: connect's request must not count twice", ext.Day, want)
+		}
+	})
+
+	t.Run("paid extra usage", func(t *testing.T) {
+		h := newHarness(t, "allow_extra_usage: true")
+		h.r.observeStart = h.now.Add(-24 * time.Hour)
+		r := reset(h)
+		h.use("connect", acctP, model, pluginapi.UsageDetail{}, 1.0, r)
+		h.advance(time.Minute)
+		h.use("connect", acctP, model, detail, 1.0, r) // window full: no delta
+		if got := h.demand("connect"); !closeTo(got.Day, usd/24, 1e-9) {
+			t.Fatalf("connect demand %+v, want $%.2f/24h", got, usd)
+		}
+	})
+
+	t.Run("API-key account", func(t *testing.T) {
+		h := newHarness(t, "")
+		h.r.observeStart = h.now.Add(-24 * time.Hour)
+		h.r.ObserveUsage(pluginapi.UsageRecord{
+			Provider: "claude", AuthID: "key-account", APIKey: keys["connect"], Model: model, Detail: detail,
+		})
+		if got := h.demand("connect"); !closeTo(got.Day, usd/24, 1e-9) {
+			t.Fatalf("connect demand %+v, want $%.2f/24h", got, usd)
+		}
+	})
+}

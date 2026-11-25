@@ -75,6 +75,9 @@ func TestPromoteRuntimeConfigAndRestoreBackup(t *testing.T) {
 	if sec["enabled"] != true || sec["priority"] != 10 || sec["state_file"] != path || sec["spare_factor"] != 2.5 {
 		t.Fatalf("section keeps host keys and takes routing from the runtime config: %v", sec)
 	}
+	if !strings.Contains(v.ConfigYAML, "# default") {
+		t.Fatalf("comments on keys that stay must be kept:\n%s", v.ConfigYAML)
+	}
 	if !strings.Contains(v.ConfigYAML, "# CPA config") || !strings.Contains(v.ConfigYAML, "sk-secret") || !strings.Contains(v.ConfigYAML, "port: 8317") {
 		t.Fatalf("the rest of config.yaml must be kept:\n%s", v.ConfigYAML)
 	}

@@ -54,6 +54,11 @@ jobs:
           echo "Building against CPA $v" >> "$GITHUB_STEP_SUMMARY"
           git diff --stat go.mod go.sum
 
+      # The UI smoke test (internal/router/ui_test.go) renders ui.html in Node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Test
         run: |
           go vet ./...

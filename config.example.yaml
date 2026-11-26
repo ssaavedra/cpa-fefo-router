@@ -39,6 +39,9 @@ plugins:
       # fetched through CPA this often; 0 disables.
       usage_poll_interval: 5m
       scoped_families: [fable]  # families with their own allowance, kept off plans without one
+      # Prompts a client sends to carry on after a usage limit. Copies merged
+      # into the interrupted user message are dropped; [] turns it off.
+      resume_prompts: ["Continue where you left off."]
 
       # Prices: config overrides > daily models.dev sync > built-in snapshot.
       pricing:
@@ -100,7 +103,9 @@ plugins:
         max_delay: 30s
 
       # on_exhausted: wait — hold each request up to max_wait when the refill
-      # is within horizon, then answer 429 with Retry-After.
+      # is within horizon, then answer 429 with Retry-After. recheck caps the
+      # advertised retry time so self-resuming clients (T3 Code) retry early.
       wait:
         horizon: 2h
         max_wait: 30s
+        recheck: 0s

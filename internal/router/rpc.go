@@ -43,8 +43,11 @@ type capabilities struct {
 	Scheduler                        bool `json:"scheduler"`
 	RequestInterceptor               bool `json:"request_interceptor"`
 	RequestInterceptorOmitBodyBefore bool `json:"request_interceptor_omit_body_before,omitempty"`
-	UsagePlugin                      bool `json:"usage_plugin"`
-	ManagementAPI                    bool `json:"management_api"`
+	// The host hands request.patch_body_before the raw body and splices the
+	// edits it returns, without the Base64 the intercept call would cost.
+	RequestInterceptorPatchBodyBefore bool `json:"request_interceptor_patch_body_before,omitempty"`
+	UsagePlugin                       bool `json:"usage_plugin"`
+	ManagementAPI                     bool `json:"management_api"`
 }
 
 type managementRegistration struct {
@@ -94,6 +97,9 @@ func (h *Handler) failure(method string, err error) []byte {
 	case pluginabi.MethodRequestInterceptBefore, pluginabi.MethodRequestInterceptAfter:
 		raw, _ := okEnvelope(pluginapi.RequestInterceptResponse{})
 		return raw
+	case pluginabi.MethodRequestPatchBodyBefore, pluginabi.MethodRequestPatchBodyAfter:
+		raw, _ := okEnvelope(pluginapi.RequestBodyPatchResponse{})
+		return raw
 	}
 	raw, _ := pluginabi.NewErrorEnvelope("plugin_error", err.Error())
 	return raw
@@ -135,6 +141,11 @@ func (h *Handler) dispatch(method string, request []byte) ([]byte, error) {
 	case pluginabi.MethodRequestInterceptAfter:
 		// The capability covers both hooks; nothing to do after selection.
 		return okEnvelope(pluginapi.RequestInterceptResponse{})
+	case pluginabi.MethodRequestPatchBodyBefore:
+		// The request is the raw body.
+		return okEnvelope(pluginapi.RequestBodyPatchResponse{Edits: h.Router.PatchBody(request)})
+	case pluginabi.MethodRequestPatchBodyAfter:
+		return okEnvelope(pluginapi.RequestBodyPatchResponse{})
 	case pluginabi.MethodUsageHandle:
 		var rec pluginapi.UsageRecord
 		if err := json.Unmarshal(request, &rec); err != nil {
@@ -186,6 +197,7 @@ func (h *Handler) registration(cfg Config) registration {
 				f("capacity_usd", pluginapi.ConfigFieldTypeObject, "Pin an account's weekly capacity in API-equivalent USD instead of learning it."),
 				f("default_unit_usd", pluginapi.ConfigFieldTypeNumber, "USD per unit of capacity before any account of the provider is learned. Default 220."),
 				f("learn_min_delta", pluginapi.ConfigFieldTypeNumber, "Weekly share a cycle must see before its capacity estimate is used. Default 0.05."),
+				f("resume_prompts", pluginapi.ConfigFieldTypeArray, "Prompts a client sends to carry on after a usage limit (default: T3 Code's \"Continue where you left off.\"). Copies the Claude CLI merges into the interrupted user message are dropped before the request goes upstream, so the model carries on with that message. Empty turns this off."),
 				f("scoped_families", pluginapi.ConfigFieldTypeArray, "Model families with their own allowance (default [fable]): kept off accounts whose plan has none while extra usage would bill them."),
 				f("usage_poll_interval", pluginapi.ConfigFieldTypeString, "How often each Claude account's usage report (Fable allowance, extra usage) is fetched, with ±30% jitter per poll. Default 5m; 0 disables."),
 				f("pricing", pluginapi.ConfigFieldTypeObject, "models.dev price sync: sync (default true), sync_interval (default 24h), url."),
@@ -196,11 +208,12 @@ func (h *Handler) registration(cfg Config) registration {
 			},
 		},
 		Capabilities: capabilities{
-			Scheduler:                        active,
-			RequestInterceptor:               active,
-			RequestInterceptorOmitBodyBefore: active,
-			UsagePlugin:                      true,
-			ManagementAPI:                    true,
+			Scheduler:                         active,
+			RequestInterceptor:                active,
+			RequestInterceptorOmitBodyBefore:  active,
+			RequestInterceptorPatchBodyBefore: active,
+			UsagePlugin:                       true,
+			ManagementAPI:                     true,
 		},
 	}
 }

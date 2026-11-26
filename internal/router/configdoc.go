@@ -28,6 +28,7 @@ type ConfigDoc struct {
 	UsagePollInterval string                    `json:"usage_poll_interval"`
 	AllowExtraUsage   bool                      `json:"allow_extra_usage"`
 	ScopedFamilies    []string                  `json:"scoped_families"`
+	ResumePrompts     []string                  `json:"resume_prompts"`
 	LogDecisions      bool                      `json:"log_decisions"`
 	DisplayUnits      string                    `json:"display_units"`
 	Buckets           map[string][]string       `json:"buckets"`
@@ -45,6 +46,7 @@ type ConfigDoc struct {
 	Wait struct {
 		Horizon string `json:"horizon"`
 		MaxWait string `json:"max_wait"`
+		Recheck string `json:"recheck"`
 	} `json:"wait"`
 	Pricing struct {
 		Sync         bool   `json:"sync"`
@@ -108,7 +110,7 @@ func (c Config) Doc() ConfigDoc {
 		SessionTTL: durStr(c.SessionTTL), UsagePollInterval: durStr(c.UsagePollInterval), AllowExtraUsage: c.AllowExtraUsage, LogDecisions: c.LogDecisions,
 		Buckets: map[string][]string{}, Capacity: map[string]float64{}, CapacityUSD: map[string]float64{}, Clients: map[string]ClientDoc{},
 		DefaultUnitUSD: c.DefaultUnitUSD, LearnMinDelta: c.LearnMinDelta,
-		ScopedFamilies: append([]string{}, c.ScopedFamilies...), DisplayUnits: c.DisplayUnits,
+		ScopedFamilies: append([]string{}, c.ScopedFamilies...), ResumePrompts: append([]string{}, c.ResumePrompts...), DisplayUnits: c.DisplayUnits,
 		DefaultClient: clientDoc(c.DefaultClient),
 	}
 	for k, v := range c.Buckets {
@@ -124,7 +126,7 @@ func (c Config) Doc() ConfigDoc {
 		d.Clients[k] = clientDoc(v)
 	}
 	d.Pacing.Enabled, d.Pacing.Horizon, d.Pacing.MaxDelay = c.Pacing.Enabled, durStr(c.Pacing.Horizon), durStr(c.Pacing.MaxDelay)
-	d.Wait.Horizon, d.Wait.MaxWait = durStr(c.Wait.Horizon), durStr(c.Wait.MaxWait)
+	d.Wait.Horizon, d.Wait.MaxWait, d.Wait.Recheck = durStr(c.Wait.Horizon), durStr(c.Wait.MaxWait), durStr(c.Wait.Recheck)
 	d.Pricing.Sync, d.Pricing.SyncInterval, d.Pricing.URL = c.Pricing.Sync, durStr(c.Pricing.SyncInterval), c.Pricing.URL
 	d.LendReserve = curveDoc(c.LendReserve)
 	d.LendLimits = map[string]map[string]any{}

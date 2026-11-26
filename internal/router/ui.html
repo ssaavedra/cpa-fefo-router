@@ -771,6 +771,8 @@ const GROUPS = [
     { key: "pacing.max_delay", label: "Longest delay per request", kind: "dur", def: "30s" },
     { key: "wait.horizon", label: "“Wait” clients: hold requests if the refill is within", kind: "dur", def: "2h", help: "For clients set to wait when their accounts run out. Beyond this they get 429 at once." },
     { key: "wait.max_wait", label: "“Wait” clients: longest hold per request", kind: "dur", def: "30s", help: "After this the request is answered 429 with Retry-After set to the refill." },
+    { key: "resume_prompts", label: "Drop repeated resume prompts", kind: "list", def: ["Continue where you left off."], help: "Comma separated. When a client resumes after a usage limit, the Claude CLI merges each of these prompts into the user message the limit interrupted, once per attempt. They are dropped before the request goes upstream, so the model carries on with that message. Empty turns it off." },
+    { key: "wait.recheck", label: "“Wait” clients: retry at most after", kind: "dur", def: "0s", help: "Shortens the retry time the 429 advertises, so a client that resumes on its own (T3 Code) comes back before the refill and picks up an added account or a changed plan. Each early retry that fails adds a turn to the client's thread. 0 advertises the refill." },
   ] },
   { title: "Sessions and quota data", fields: [
     { key: "session_ttl", label: "Keep an idle session on its account for", kind: "dur", def: "1h" },

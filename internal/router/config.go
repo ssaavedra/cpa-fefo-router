@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -176,6 +177,8 @@ type PacingConfig struct {
 type WaitConfig struct {
 	Horizon time.Duration `yaml:"horizon" json:"horizon"`
 	MaxWait time.Duration `yaml:"max_wait" json:"max_wait"`
+	// Recheck caps the retry time a wait 429 advertises; 0 advertises the refill.
+	Recheck time.Duration `yaml:"recheck" json:"recheck"`
 }
 
 // PricingConfig controls the models.dev price sync.
@@ -223,6 +226,10 @@ type Config struct {
 	// usage report has no allowance for one of them, its requests would bill
 	// extra usage, so they are kept off that account.
 	ScopedFamilies []string `yaml:"scoped_families" json:"scoped_families"`
+	// ResumePrompts are prompts a client sends to carry on after a usage
+	// limit. Copies merged into an interrupted user message are dropped
+	// before the request goes upstream. Empty turns this off.
+	ResumePrompts []string `yaml:"resume_prompts" json:"resume_prompts"`
 	// AllowExtraUsage lets exhausted accounts with paid extra usage serve.
 	AllowExtraUsage bool `yaml:"allow_extra_usage" json:"allow_extra_usage"`
 	// UsagePollInterval is how often each Claude account's usage report is
@@ -286,6 +293,7 @@ func DefaultConfig() Config {
 		DisplayUnits:      UnitsUSD,
 		DefaultUnitUSD:    220,
 		ScopedFamilies:    []string{"fable"},
+		ResumePrompts:     slices.Clone(DefaultResumePrompts),
 		LearnMinDelta:     0.05,
 		DefaultClient:     ClientConfig{OnExhausted: PolicyAny},
 		Pacing:            PacingConfig{Enabled: true, Horizon: 2 * time.Hour, MaxDelay: 30 * time.Second},
@@ -309,6 +317,7 @@ type rawConfig struct {
 	SessionTTL        *string                   `yaml:"session_ttl"`
 	AllowExtraUsage   *bool                     `yaml:"allow_extra_usage"`
 	ScopedFamilies    *[]string                 `yaml:"scoped_families"`
+	ResumePrompts     *[]string                 `yaml:"resume_prompts"`
 	RefreshInterval   *string                   `yaml:"refresh_interval"`
 	UsagePollInterval *string                   `yaml:"usage_poll_interval"`
 	StateFile         *string                   `yaml:"state_file"`
@@ -329,6 +338,7 @@ type rawConfig struct {
 	Wait *struct {
 		Horizon *string `yaml:"horizon"`
 		MaxWait *string `yaml:"max_wait"`
+		Recheck *string `yaml:"recheck"`
 	} `yaml:"wait"`
 	Pricing *struct {
 		Sync         *bool   `yaml:"sync"`
@@ -427,6 +437,14 @@ func ParseConfig(raw []byte) (Config, error) {
 			cfg.ScopedFamilies = append(cfg.ScopedFamilies, f)
 		}
 	}
+	if rc.ResumePrompts != nil {
+		cfg.ResumePrompts = []string{}
+		for _, p := range *rc.ResumePrompts {
+			if p = strings.TrimSpace(p); p != "" {
+				cfg.ResumePrompts = append(cfg.ResumePrompts, p)
+			}
+		}
+	}
 	if rc.StateFile != nil {
 		cfg.StateFile = strings.TrimSpace(*rc.StateFile)
 	}
@@ -450,6 +468,7 @@ func ParseConfig(raw []byte) (Config, error) {
 	if rc.Wait != nil {
 		dur("wait.horizon", rc.Wait.Horizon, &cfg.Wait.Horizon, 0)
 		dur("wait.max_wait", rc.Wait.MaxWait, &cfg.Wait.MaxWait, 0)
+		dur("wait.recheck", rc.Wait.Recheck, &cfg.Wait.Recheck, 0)
 	}
 	if rc.Pricing != nil {
 		if rc.Pricing.Sync != nil {

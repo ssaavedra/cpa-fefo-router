@@ -69,7 +69,8 @@ The weekly sums say nothing about the 5h window: a borrower can empty it in an h
 
 A request interceptor runs before credential selection:
 
-- **wait policy:** when a client has no own or spare account left and the next refill of one of its accounts is within `wait.horizon` (2 h), each request is held up to `wait.max_wait` (30 s) and, if still nothing is usable, answered `429` with `Retry-After` = time to refill. Beyond the horizon it answers 429 at once.
+- **wait policy:** when a client has no own or spare account left and the next refill of one of its accounts is within `wait.horizon` (2 h), each request is held up to `wait.max_wait` (30 s) and, if still nothing is usable, answered `429` with `Retry-After` = time to refill. Beyond the horizon it answers 429 at once. The error text repeats the time as `(reset after 4h35m0s)`, CLIProxyAPI's own cooldown wording, which T3 Code reads to resume the thread by itself. `wait.recheck` (off by default) caps that time, so such a client comes back early and picks up an account added or a plan changed in the meantime; each early retry that still fails adds a turn to its thread. With no known refill the phrase is only sent when `wait.recheck` is set.
+- **resume prompts:** T3 Code resumes a thread stopped by a usage limit by sending `Continue where you left off.`. The Claude CLI leaves the failed attempt's error out of later requests but merges each such prompt into the user message the limit interrupted, once per attempt. Before credential selection the plugin drops those copies (byte-range edits on the raw body; everything else keeps its bytes), so the model gets the interrupted message as it was and carries on with it. A cache breakpoint on a dropped block moves to the block before it. `resume_prompts` lists the prompts; `[]` turns this off.
 - **pacing:** when a client is down to its last account and, at the last hour's pace, that account's 5-hour or weekly window would empty before it refills within `pacing.horizon`, each request is delayed so the remaining quota lasts until the refill (at most `pacing.max_delay` per request).
 
 ## Dollars, capacity learning and Fable protection
@@ -211,7 +212,8 @@ See [`config.example.yaml`](config.example.yaml); every key is optional. Duratio
 | `clients.<name>` | — | `keys` (caller scopes or sha256), `buckets` (ordered), `on_exhausted` (`any`/`wait`/`fail`), `borrow` (default true). |
 | `default_client` | `any`, no buckets | Policy for keys not in `clients`. |
 | `pacing` | on, `2h`, `30s` | See *Wait and pacing*. |
-| `wait` | `2h`, `30s` | See *Wait and pacing*. |
+| `wait` | `2h`, `30s`, `0` | `horizon`, `max_wait`, `recheck`. See *Wait and pacing*. |
+| `resume_prompts` | `["Continue where you left off."]` | Prompts dropped from a user message they were merged into after a usage limit; `[]` turns it off. See *Wait and pacing*. |
 | `log_decisions` | `true` | One log line per decision. |
 
 ## Limits

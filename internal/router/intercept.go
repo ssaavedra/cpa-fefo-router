@@ -13,10 +13,11 @@ import (
 
 // gate is the interceptor's verdict for one request.
 type gate struct {
-	Delay      time.Duration
-	Terminate  bool
-	RetryAfter time.Duration
-	Reason     string
+	Delay     time.Duration
+	Terminate bool
+	// Refill is the time until the client's next account refills; 0 if unknown.
+	Refill time.Duration
+	Reason string
 }
 
 // Intercept runs before credential selection. It implements the "wait"
@@ -48,9 +49,11 @@ func (r *Router) Intercept(req pluginapi.RequestInterceptRequest) pluginapi.Requ
 		}
 		if g.Terminate {
 			// Re-check after waiting: quota may have refilled meanwhile.
-			if again, _ := r.evaluateGate(scope, provider); !again.Terminate {
+			again, _ := r.evaluateGate(scope, provider)
+			if !again.Terminate {
 				return pluginapi.RequestInterceptResponse{}
 			}
+			g = again
 		}
 	}
 	if !g.Terminate {
@@ -59,15 +62,12 @@ func (r *Router) Intercept(req pluginapi.RequestInterceptRequest) pluginapi.Requ
 	r.mu.Lock()
 	r.metrics.waitRejected(client)
 	r.mu.Unlock()
-	secs := int(math.Ceil(g.RetryAfter.Seconds()))
-	if secs < 1 {
-		secs = 1
-	}
+	message, secs := waitRejection(g, r.Config().Wait)
 	body, _ := json.Marshal(map[string]any{
 		"type": "error",
 		"error": map[string]any{
 			"type":    "rate_limit_error",
-			"message": fmt.Sprintf("fefo-router: %s; quota refills in %s", g.Reason, fmtDur(g.RetryAfter)),
+			"message": message,
 		},
 	})
 	return pluginapi.RequestInterceptResponse{
@@ -79,6 +79,30 @@ func (r *Router) Intercept(req pluginapi.RequestInterceptRequest) pluginapi.Requ
 		},
 		ResponseBody: body,
 	}
+}
+
+// waitRejection words a wait-policy 429 and returns its Retry-After in
+// seconds. The time to retry is also written as "(reset after 4h35m0s)",
+// CLIProxyAPI's own cooldown wording: T3 Code reads it from the error text to
+// resume the thread by itself. wait.recheck shortens that time, so an account
+// added or a plan changed in the meantime is noticed before the refill. With
+// no known refill and no recheck, the phrase is left out: a client resuming on
+// its own every max_wait would only flood itself with failed turns.
+func waitRejection(g gate, wc WaitConfig) (string, int) {
+	message := "fefo-router: " + g.Reason
+	retry := g.Refill
+	if retry > 0 {
+		message += "; quota refills in " + fmtDur(retry)
+	}
+	if wc.Recheck > 0 && (retry == 0 || wc.Recheck < retry) {
+		retry = wc.Recheck
+		message += "; checking again in " + fmtDur(retry)
+	}
+	if retry == 0 {
+		return message, max(1, int(math.Ceil(wc.MaxWait.Seconds())))
+	}
+	secs := max(1, int(math.Ceil(retry.Seconds())))
+	return message + " (reset after " + (time.Duration(secs) * time.Second).String() + ")", secs
 }
 
 func (r *Router) evaluateGate(scope, provider string) (gate, string) {
@@ -120,10 +144,10 @@ func (r *Router) evaluateGate(scope, provider string) (gate, string) {
 			}
 		}
 		if refill.IsZero() {
-			return gate{Terminate: true, RetryAfter: cfg.Wait.MaxWait, Reason: "no usable account and no known refill"}, client
+			return gate{Terminate: true, Reason: "no usable account and no known refill"}, client
 		}
-		until := refill.Sub(now)
-		g := gate{Terminate: true, RetryAfter: until, Reason: "own accounts exhausted (policy wait)"}
+		until := max(refill.Sub(now), time.Second)
+		g := gate{Terminate: true, Refill: until, Reason: "own accounts exhausted (policy wait)"}
 		if until <= cfg.Wait.Horizon {
 			g.Delay = minDur(cfg.Wait.MaxWait, until)
 		}

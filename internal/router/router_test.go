@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -253,11 +255,60 @@ func TestWaitPolicyHoldsThen429s(t *testing.T) {
 	if ra := out.ResponseHeaders.Get("Retry-After"); ra != "3000" {
 		t.Fatalf("Retry-After %q", ra)
 	}
+	var body struct {
+		Error struct{ Message string } `json:"error"`
+	}
+	if err := json.Unmarshal(out.ResponseBody, &body); err != nil || t3ResetSeconds(body.Error.Message) != 3000 {
+		t.Fatalf("body %s: %v", out.ResponseBody, err)
+	}
 	// Other clients are untouched.
 	h.slept = 0
 	out = h.r.Intercept(pluginapi.RequestInterceptRequest{RequestedModel: "claude-opus-5-5", CallerScope: callerScope(keys["pni"])})
 	if out.Terminate || h.slept != 0 {
 		t.Fatalf("pni gated: %+v slept %s", out, h.slept)
+	}
+}
+
+// t3ResetSeconds reads a retry time the way T3 Code 0.1.11 does from a
+// Claude 429 that is not CLIProxyAPI's own cooldown text; -1 if it finds none.
+func t3ResetSeconds(message string) int {
+	m := regexp.MustCompile(`\(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)`).FindStringSubmatch(message)
+	if m == nil {
+		return -1
+	}
+	secs := 0
+	for i, unit := range []int{3600, 60, 1} {
+		n, _ := strconv.Atoi(m[i+1])
+		secs += n * unit
+	}
+	return secs
+}
+
+func TestWaitRejectionCarriesResetForT3(t *testing.T) {
+	wc := WaitConfig{MaxWait: 30 * time.Second}
+	recheck := WaitConfig{MaxWait: 30 * time.Second, Recheck: 15 * time.Minute}
+	for _, tc := range []struct {
+		name       string
+		g          gate
+		wc         WaitConfig
+		wantSecs   int
+		wantT3     int
+		wantPhrase string
+	}{
+		{"refill", gate{Refill: 4*time.Hour + 35*time.Minute + 1500*time.Millisecond, Reason: "r"}, wc, 16502, 16502, "quota refills in 4h35m"},
+		{"refill past a day", gate{Refill: 26*time.Hour + 3*time.Minute, Reason: "r"}, wc, 93780, 93780, "quota refills in 26h03m"},
+		{"recheck sooner", gate{Refill: 4 * time.Hour, Reason: "r"}, recheck, 900, 900, "checking again in 15m0s"},
+		{"refill sooner", gate{Refill: 10 * time.Minute, Reason: "r"}, recheck, 600, 600, "quota refills in 10m0s"},
+		{"unknown refill", gate{Reason: "r"}, wc, 30, -1, "fefo-router: r"},
+		{"unknown refill, recheck", gate{Reason: "r"}, recheck, 900, 900, "fefo-router: r; checking again in 15m0s"},
+	} {
+		message, secs := waitRejection(tc.g, tc.wc)
+		if secs != tc.wantSecs || t3ResetSeconds(message) != tc.wantT3 || !strings.Contains(message, tc.wantPhrase) {
+			t.Errorf("%s: %q, Retry-After %d", tc.name, message, secs)
+		}
+		if strings.Contains(message, "checking again") && strings.Contains(tc.name, "refill sooner") {
+			t.Errorf("%s: recheck later than the refill still shown: %q", tc.name, message)
+		}
 	}
 }
 

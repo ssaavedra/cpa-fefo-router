@@ -155,6 +155,7 @@ async function run(name, fixture, unit) {
     matchMedia: () => ({ matches: false }),
     setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {},
     prompt: () => null, confirm: () => false,
+    addEventListener() {}, removeEventListener() {},
     atob, btoa, TextEncoder, TextDecoder, structuredClone, URL,
     fetch: async (url, opts = {}) => {
       if ((opts.method || "GET") !== "GET") return respond(405, { error: "ui_smoke: unexpected " + opts.method + " " + url });

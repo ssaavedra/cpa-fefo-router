@@ -187,6 +187,8 @@ type ConfigView struct {
 	Mode         Mode      `json:"mode"`
 	StateFile    string    `json:"state_file"`
 	Accounts     []string  `json:"known_accounts"`
+	// AccountIDs are the known accounts by auth file name, for config keys.
+	AccountIDs []knownAccount `json:"account_ids"`
 	// Backups are config.yaml sections replaced from the browser, newest
 	// first, for restoring.
 	Backups []configBackup `json:"backups"`
@@ -194,6 +196,14 @@ type ConfigView struct {
 	// write and the plugin section in it.
 	ConfigYAML string          `json:"config_yaml,omitempty"`
 	Section    json.RawMessage `json:"section,omitempty"`
+}
+
+// knownAccount names an account for the editor: the ID to write in config
+// and the label to show beside it.
+type knownAccount struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Provider string `json:"provider"`
 }
 
 // configBackup is a config.yaml section as it was before the browser
@@ -222,6 +232,7 @@ func (r *Router) ConfigView() ConfigView {
 	for _, id := range sortedKeys(r.accounts) {
 		a := r.accounts[id].Info
 		v.Accounts = append(v.Accounts, a.display()+" ("+a.Provider+")")
+		v.AccountIDs = append(v.AccountIDs, knownAccount{ID: id, Label: a.display(), Provider: a.Provider})
 	}
 	v.Backups = make([]configBackup, 0, len(r.configBackups))
 	for i := len(r.configBackups) - 1; i >= 0; i-- {

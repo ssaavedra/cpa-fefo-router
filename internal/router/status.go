@@ -15,6 +15,9 @@ var Version = "0.1.0"
 
 // AccountView is one account in the status report.
 type AccountView struct {
+	// ID is the auth file name, the unambiguous key for config; Account is
+	// its display name (the e-mail), which two providers' files can share.
+	ID              string    `json:"id"`
 	Account         string    `json:"account"`
 	Provider        string    `json:"provider"`
 	Buckets         []string  `json:"buckets,omitempty"`
@@ -234,7 +237,7 @@ func (r *Router) Status(decisions int) Status {
 		for _, id := range pc.order {
 			e := pc.evals[id]
 			av := AccountView{
-				Account: e.Name, Provider: e.Provider, Buckets: e.Buckets, HomeClients: e.Home,
+				ID: id, Account: e.Name, Provider: e.Provider, Buckets: e.Buckets, HomeClients: e.Home,
 				Usable: e.Usable, Blocked: e.Block, NoData: e.NoData,
 				WeeklyRemaining: e.WeeklyRemaining, WeeklyReset: e.WeeklyReset,
 				ShortRemaining: e.ShortRemaining, ShortReset: e.ShortReset,

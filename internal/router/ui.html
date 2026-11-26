@@ -199,7 +199,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
     <div id="groups"></div>
 
     <h2>Buckets <button class="sec small" id="addBucket">+ Add bucket</button></h2>
-    <p class="sub">A bucket is a named group of accounts. Clients list the buckets they own, in order of preference; an account lends to other buckets' clients only quota its own clients are not expected to need. Accounts are named by e-mail, auth file name or auth ID. Known accounts: <span id="knownAccounts"></span></p>
+    <p class="sub">A bucket is a named group of accounts. Clients list the buckets they own, in order of preference; an account lends to other buckets' clients only quota its own clients are not expected to need. Accounts are named by auth file name (preferred: an e-mail can match both a Claude and a Codex login), e-mail or auth ID. Known accounts: <span id="knownAccounts"></span></p>
     <div id="buckets"></div>
 
     <h2>Clients <button class="sec small" id="addClient">+ Add client</button></h2>
@@ -867,7 +867,7 @@ function reserveBlock() {
 // capacityBlock edits the per-account plan size and pinned capacity.
 function capacityBlock() {
   draft.capacity = draft.capacity || {}; draft.capacity_usd = draft.capacity_usd || {};
-  const rows = (status?.accounts || []).map((a) => ({ key: a.account.toLowerCase(), a }));
+  const rows = (status?.accounts || []).map((a) => ({ key: accountKey({ ...draft.capacity, ...draft.capacity_usd }, a), a }));
   const known = new Set(rows.map((r) => r.key));
   for (const k of new Set([...Object.keys(draft.capacity), ...Object.keys(draft.capacity_usd)])) if (!known.has(k)) rows.push({ key: k, a: null });
   const num = (map, k, ph, title) => {
@@ -881,7 +881,7 @@ function capacityBlock() {
     el("div", { class: "scroll" }, el("table", {},
       el("tr", {}, el("th", {}, "Account"), el("th", {}, "Capacity now"), el("th", {}, "Plan size (× Pro)"), el("th", {}, "Fixed API $ per week")),
       ...rows.map(({ key, a }) => el("tr", {},
-        el("td", {}, a ? [providerIcon(a.provider), " ", a.account] : [key, el("div", { class: "meta" }, "set under this name (e-mail, auth file name or auth ID)")]),
+        el("td", { title: a ? "set as " + key : "" }, a ? [providerIcon(a.provider), " ", a.account] : [key, el("div", { class: "meta" }, "set under this name (e-mail, auth file name or auth ID)")]),
         el("td", { title: a?.capacity_why || "" }, a ? `${usd(a.capacity_usd)}/week · ${a.capacity_source}` : "—"),
         el("td", {}, num(draft.capacity, key, "1", "Relative plan size")),
         el("td", {}, num(draft.capacity_usd, key, "learned", "Pin the weekly capacity in API $"))))),
@@ -902,7 +902,7 @@ function renderConfig(force) {
   liveHooks = [];
   $("cfgSource").textContent = cfgView.source === "runtime" ? `runtime settings (saved ${when(cfgView.overlay_at)}${cfgView.overlay_note ? " — " + cfgView.overlay_note : ""})` : "config.yaml";
   $("cfgErr").textContent = cfgView.overlay_error || "";
-  $("knownAccounts").textContent = (cfgView.known_accounts || []).join(" · ") || "none yet";
+  $("knownAccounts").textContent = (cfgView.account_ids || []).map((a) => `${a.id} (${a.label}, ${a.provider})`).join(" · ") || "none yet";
   $("baseYaml").textContent = cfgView.base_yaml || "";
   $("cfgPromote").disabled = cfgView.source !== "runtime";
   renderBackups();
@@ -919,12 +919,20 @@ function listEditor(values, onChange, suggestions, placeholder) {
     const inp = el("input", { list: suggestions ? "dl-" + suggestions.id : null, placeholder: placeholder || "add…", style: "min-width:200px" });
     inp.addEventListener("change", () => { const v = inp.value.trim(); if (v && !values.includes(v)) { values.push(v); onChange(); draw(); } });
     box.append(inp);
-    if (suggestions) box.append(el("datalist", { id: "dl-" + suggestions.id }, ...suggestions.items.map((s) => el("option", { value: s }))));
+    if (suggestions) box.append(el("datalist", { id: "dl-" + suggestions.id }, ...suggestions.items.map((s) => typeof s === "string" ? el("option", { value: s }) : el("option", { value: s.value, label: s.label }))));
   };
   draw();
   return box;
 }
-function accountIdents() { return (cfgView.known_accounts || []).map((a) => a.replace(/ \([^)]*\)$/, "")); }
+// accountIdents suggests auth file names: an e-mail can name two accounts
+// (a Claude and a Codex login), a file name always names one.
+function accountIdents() { return (cfgView.account_ids || []).map((a) => ({ value: a.id, label: `${a.label} (${a.provider})` })); }
+// accountKey is the config key an account is set under in map: an existing
+// key naming it (file name, file name without .json, e-mail), else its ID.
+function accountKey(map, a) {
+  const names = [a.id, a.id.replace(/\.json$/, ""), a.account].map((n) => n.toLowerCase());
+  return Object.keys(map).find((k) => names.includes(k.trim().toLowerCase())) || a.id;
+}
 // limitBox edits one bucket lending limit: whom it covers and its share.
 function limitBox(name, target) {
   const lim = draft.lend_limits[name];
